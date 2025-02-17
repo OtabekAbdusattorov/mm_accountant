@@ -42,7 +42,7 @@ def take_screenshot_of_data_for_admin():
     ax.table(cellText=table_data, colLabels=None, cellLoc='center', loc='center', colColours=['#f5f5f5']*len(columns))
 
     # Save the table as an image
-    screenshot_path = 'admin_data_screenshot.png'  # Fixed name for admin screenshot
+    screenshot_path = 'content/admin_data_screenshot.png'  # Fixed name for admin screenshot
     canvas = FigureCanvas(fig)
     canvas.print_figure(screenshot_path, bbox_inches="tight", pad_inches=0.05)
 
@@ -82,7 +82,7 @@ def take_screenshot_of_data_for_user(last_modify_userID):
     ax.table(cellText=table_data, colLabels=None, cellLoc='center', loc='center', colColours=['#f5f5f5']*len(columns))
 
     # Save the table as an image
-    screenshot_path = f'user_data_screenshot_{last_modify_userID}.png'  # Save with user-specific name
+    screenshot_path = f'content/user_data_screenshot_{last_modify_userID}.png'  # Save with user-specific name
     canvas = FigureCanvas(fig)
     canvas.print_figure(screenshot_path, bbox_inches="tight", pad_inches=0.05)
 
