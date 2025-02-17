@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt, sqlite3
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 

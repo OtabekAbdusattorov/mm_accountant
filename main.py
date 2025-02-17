@@ -457,7 +457,6 @@ def send_to_admins(username, last_modify_userID, model, vin, plate_number, last_
 
 @bot.callback_query_handler(func=lambda call: call.data == "confirm_by_admin")
 def handle_confirmation_by_admin(call):
-    print(call.message)
     message_text = call.message.text
     user_id_line = [line for line in message_text.split('\n') if line.startswith("User ID:")]
     if user_id_line:
