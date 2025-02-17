@@ -7,11 +7,15 @@ venv/
 
 # Ignore compiled Python files
 __pycache__/
+__pycache__
 *.pyc
 *.pyo
 
-# Ignore IDE files (for IntelliJ IDEA and PyCharm)
+# Ignore IDE files
+.idea
 .idea/
 
-# Ignore logs and cache
+# Ignore logs
 *.log
+
+account
