@@ -1,6 +1,15 @@
 from dotenv import load_dotenv
 from datetime import datetime
-import telebot, sqlite3, logging, os, send_file_pic as sfp
+import telebot \
+    , sqlite3 \
+    , logging \
+    , os \
+    , send_file_pic as sfp \
+    , userState \
+    , createQueries as cq \
+    , tempTableManager as ttm \
+    , operations_orders as oor \
+    , page_navigation as pg_nav
 from telebot.types import KeyboardButton, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 
 
@@ -20,222 +29,31 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # TIME
-time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+time = datetime.now().strftime("%d/%m/%Y %H:%M")
 
 # Bot initialization
 bot = telebot.TeleBot(bot_token)
 
 ## Function create all necessary tables
-def create_table():
-    connection = sqlite3.connect(db)  # Using consistent database name
-    with connection:
+cq.create_table()
 
 
-        ## userstates table
-        connection.execute("""
-        CREATE TABLE IF NOT EXISTS userStates (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            state TEXT,
-            date TEXT
-        )
-        """)
-
-
-        ## requests table
-        connection.execute("""
-        CREATE TABLE IF NOT EXISTS requests (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            Model TEXT,
-            VIN TEXT,
-            Plate_Number TEXT,
-            Last_Price REAL,
-            VAT REAL,
-            last_modify_userID INTEGER,
-            username TEXT
-        )
-        """)
-
-
-        ## orders table
-        connection.execute("""
-            CREATE TABLE IF NOT EXISTS orders (
-                order_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                request_id INTEGER,
-                is_confirmed BOOLEAN DEFAULT 0,
-                is_paid TEXT DEFAULT 'pending',
-                last_modify_userID INTEGER,
-                FOREIGN KEY (request_id) REFERENCES requests(id)
-        )
-        """)
-
-
-        ## temp table to store temp data (requests)
-        connection.execute("""
-            CREATE TABLE IF NOT EXISTS temp_requests (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                model TEXT,
-                vin TEXT UNIQUE,
-                plate_number TEXT UNIQUE,
-                last_price REAL,
-                vat REAL
-        )
-        """)
-
-
-    ## connection closed
-    connection.close()
-
-create_table()
-
-
-###### CLASS STATE MANAGER ######
-class UserStateManager:
-    def __init__(self, db):
-        self.db = db
-        self.user_states = {}
-
-    def connect(self):
-        """Create a connection to the database."""
-        return sqlite3.connect(self.db)
-
-    def get_state(self, user_id):
-        """Retrieve the latest state of a user."""
-        state = ''
-        connection = self.connect()
-        try:
-            cursor = connection.cursor()
-            cursor.execute("""
-                SELECT state FROM userStates 
-                WHERE user_id = ? 
-                ORDER BY id DESC 
-                LIMIT 1
-            """, (user_id,))
-            result = cursor.fetchone()
-            if result:
-                state = result[0]
-        except sqlite3.Error as e:
-            print(f"SQLite error: {e}")
-        finally:
-            connection.close()
-        return state
-
-    def insert_state(self, user_id, user_state):
-        """Insert a new user state into the database."""
-        connection = self.connect()
-        now_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        with connection:
-            connection.execute("""
-                INSERT INTO userStates (user_id, state, date) 
-                VALUES (?, ?, ?)
-            """, (user_id, user_state, now_time))
-        connection.close()
-
-    def update_state(self, user_id, user_state):
-        """Update an existing user state in the database."""
-        connection = self.connect()
-        now_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        with connection:
-            connection.execute("""
-                UPDATE userStates 
-                SET state = ?, date = ? 
-                WHERE user_id = ?
-            """, (user_state, now_time, user_id))
-        connection.close()
-
-    def user_state(self, message, new_state):
-        """Update or insert a user state based on their last known state."""
-        user_id = message.from_user.id
-        self.user_states[message.chat.id] = new_state
-
-        current_state = self.get_state(user_id)
-        if not current_state:
-            self.insert_state(user_id, new_state)
-        else:
-            self.update_state(user_id, new_state)
-
-state_manager = UserStateManager(db)
+###### STATE MANAGER ######
+state_manager = userState.UserStateManager(db)
 
 
 ###### CLASS TEMP TABLE MANAGER ######
-class TempTableManager:
-    def __init__(self, db):
-        self.db = db
-
-    def user_exists(self, user_id):
-        """Check if a user already has an entry in the temp table."""
-        connection = sqlite3.connect(self.db)
-        cursor = connection.cursor()
-        cursor.execute("SELECT user_id FROM temp_requests WHERE user_id = ?", (user_id,))
-        exists = cursor.fetchone() is not None
-        connection.close()
-        return exists
-
-    def insert_user(self, user_id):
-        """Insert a new user entry if they don't exist."""
-        if not self.user_exists(user_id):
-            connection = sqlite3.connect(self.db)
-            with connection:
-                connection.execute("INSERT INTO temp_requests (user_id) VALUES (?)", (user_id,))
-            connection.close()
-
-    def update_temp_results(self, user_id, column, value):
-        connection = sqlite3.connect(db)
-        with connection:
-            connection.execute(
-                f"UPDATE temp_requests SET {column} = ? WHERE user_id = ?", (value, user_id)
-            )
-
-    def get_temp_results(self, user_id):
-        connection = sqlite3.connect(self.db)
-        cursor = connection.cursor()
-        cursor.execute(
-            "SELECT Model, VIN, Plate_Number, Last_Price, VAT FROM temp_requests WHERE user_id = ?",
-            (user_id,)
-        )
-        result = cursor.fetchone()
-        connection.close()
-        return result
-
-    def clear_temp_request(self, user_id):
-        connection = sqlite3.connect(self.db)
-        with connection:
-            connection.execute("DELETE FROM temp_requests WHERE user_id = ?", (user_id,))
-        connection.close()
-
-    ### related to vin column and requests table
-    def vin_exists(self, vin):
-        """Check if a VIN already exists in the temp table."""
-        connection = sqlite3.connect(self.db)
-        cursor = connection.cursor()
-        cursor.execute("SELECT vin FROM requests WHERE vin = ?", (vin,))
-        exists = cursor.fetchone() is not None
-        connection.close()
-        return exists
-
-temp_manager = TempTableManager(db)
+temp_manager = ttm.TempTableManager(db)
 
 
-## user input for temporary/instant store
-user_data = {}
+## pinned messages = []
+msg_ids = {}
+
 
 ### Full access admin
 def is_full_admin(user_id):
     return user_id in admin_ids
 
-
-## get the infos from requests table
-def get_requests_results(last_modify_userID):
-    connection = sqlite3.connect(db)
-    cursor = connection.cursor()
-    cursor.execute(
-        "SELECT Model, VIN, Plate_Number, Last_Price, VAT, username, last_modify_userID FROM requests WHERE last_modify_userID = ?",
-        (last_modify_userID,)
-    )
-    result = cursor.fetchone()
-    connection.close()
-    return result
 
 # START page
 @bot.message_handler(commands=['start'])
@@ -286,7 +104,6 @@ def full_list(message):
 @bot.message_handler(func=lambda message: message.text == "Send request")
 def send_request(message):
     user_id = message.from_user.id
-    user_data[user_id] = {}
 
     ## user in temp table
     temp_manager.insert_user(user_id)
@@ -403,7 +220,7 @@ def handle_confirmation(call):
         connection = sqlite3.connect(db)
         with connection:
             connection.execute("""
-                INSERT INTO requests (last_modify_userID, username, Model, VIN, Plate_Number, Last_Price, VAT)
+                INSERT INTO requests (last_modify_userID, username, Model, VIN, PlateNumber, Last_Price, VAT)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (user_id, username, model, vin, plate_number, last_price, vat))
 
@@ -413,7 +230,7 @@ def handle_confirmation(call):
         # Send a confirmation message to the user
         bot.send_message(call.message.chat.id, "Your request has been successfully submitted. Thank you!")
         send_to_admins(username, user_id, model, vin, plate_number, last_price, vat)
-        state_manager.update_state(call.message.chat.id, "start_menu")
+        state_manager.user_state(call.message, "start_menu")
     else:
         bot.send_message(call.message.chat.id, "Error has occurred. Please try again right now. It might work or not.")
 
@@ -428,7 +245,7 @@ def handle_cancellation(call):
     bot.send_message(call.message.chat.id, "Your request has been canceled. No thank you!")
 
     # Optionally, move the user to a new state (e.g., back to main menu)
-    state_manager.update_state(call.message.chat.id, "start_menu")
+    state_manager.user_state(call.message, "start_menu")
 
 
 def send_to_admins(username, last_modify_userID, model, vin, plate_number, last_price, vat):
@@ -440,7 +257,7 @@ def send_to_admins(username, last_modify_userID, model, vin, plate_number, last_
                 f"Plate Number: <b>{plate_number}</b>\n"
                 f"Last Price: <b>{last_price}</b>\n"
                 f"VAT: <b>{vat}</b>\n\n"
-                f"User ID: {last_modify_userID}"
+                f"User ID: {last_modify_userID}\n"
     )
 
     inline_keyboard = InlineKeyboardMarkup(row_width=2)
@@ -452,22 +269,37 @@ def send_to_admins(username, last_modify_userID, model, vin, plate_number, last_
 
     for admin in admin_ids:
         sent_message = bot.send_message(admin, admin_summary_message, reply_markup=inline_keyboard, parse_mode="HTML")
+        msg_ids[admin] = sent_message.message_id
         bot.pin_chat_message(admin, sent_message.message_id)
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "confirm_by_admin")
 def handle_confirmation_by_admin(call):
+
     last_modify_userID = None
+    vin = None
+    admin_id = call.message.chat.id
+
     message_text = call.message.text
     user_id_line = [line for line in message_text.split('\n') if line.startswith("User ID:")]
     if user_id_line:
         last_modify_userID = user_id_line[0].split("User ID: ")[1]
 
+    vin_num = [line for line in message_text.split('\n') if line.startswith("VIN:")]
+    if vin_num:
+        vin = vin_num[0].split("VIN: ")[1]
+
+    req_info = oor.get_request_by_vin(vin)
+
+    # Prepare a summary message
+    if req_info:
+        req_id = req_info[0]
+        oor.insert_order(req_id, 1, "Pending", admin_id)
+
 
     for admin in admin_ids + [last_modify_userID]:
         bot.send_message(admin, f"Request has been confirmed by {call.message.chat.first_name}, and it is ready for payment.")
-    bot.send_message(call.message.chat.id, "You have confirmed that every data is correct and ready for payment. Thank you!")
-    bot.answer_callback_query(call.id, "Confirmed ✅")
+    bot.send_message(admin_id, "You have confirmed that every data is correct and ready for payment. Thank you!")
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "cancel_by_admin")
@@ -480,13 +312,120 @@ def handle_cancel_by_admin(call):
     if user_id_line:
         last_modify_userID = user_id_line[0].split("User ID: ")[1]
 
-    issue_owner = get_requests_results(last_modify_userID)
+    request_owner = oor.get_requests_results(last_modify_userID)
 
-    if issue_owner:
-        username = issue_owner[5]
+    if request_owner:
+        username = request_owner[5]
 
+    msg = bot.send_message(
+            call.message.chat.id,
+            f"Request has been cancelled by {call.message.chat.first_name}, and it will be returned to *{username}*.\n\n"
+            f"Explain the reason (mandatory): ", parse_mode="Markdown")
+    bot.register_next_step_handler(msg, lambda message: process_cancellation_reason(message,last_modify_userID, username))
+
+
+def process_cancellation_reason(msg, userID, username):
+    cancellation_reason = msg.text
+
+    bot.send_message(userID, f"❌ Your request has been cancelled, and is deleted by now.\n\n📌 *Reason:* {cancellation_reason}",
+        parse_mode="Markdown")
     for admin in admin_ids:
-        bot.send_message(admin, f"Request has been cancelled by {call.message.chat.first_name}, and it will be returned to the {username}.\n\nExplain the reason (mandatory): ")
+        bot.send_message(admin, f"The message has been sent to *{username}*. The reason that has been entered:\n\n*{cancellation_reason}*", parse_mode="Markdown")
+        msg_id = msg_ids.get(admin)
+        if msg_id:
+            try:
+                bot.unpin_chat_message(admin, msg_id)
+            except Exception as e:
+                print(f"Failed to unpin message {msg_id} for admin {admin}: {e}")
+        else:
+            print(f"No pinned message found for admin {admin}")
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "edit_by_admin")
+def view_edit_requests_admin(call):
+    state_manager.user_state(call.message, "view_edit_admin")
+
+    message_text = call.message.text
+
+    last_modify_userID = None
+    user_id_line = [line for line in message_text.split('\n') if line.startswith("User ID:")]
+    if user_id_line:
+        last_modify_userID = user_id_line[0].split("User ID: ")[1]
+
+    print("issued by ", last_modify_userID)
+
+    vin=None
+    vin_num = [line for line in message_text.split('\n') if line.startswith("VIN:")]
+    if vin_num:
+        vin = vin_num[0].split("VIN: ")[1]
+
+    columns, req_one_data = oor.get_requests_all(vin)
+
+    full_req_one_info, inline_keyboard = pg_nav.format_results(columns, req_one_data, context="requests_edit")
+
+    print("database update is ...")
+
+    oor.update_request(col_name='last_modify_userID', val=call.message.chat.id, user_id=last_modify_userID)
+    oor.update_request(col_name='username', val=call.message.chat.first_name, user_id=call.message.chat.id)
+
+    print("database update was ...")
+
+    bot.send_message(
+        chat_id=call.message.chat.id,
+        text=f"Request Info:\n\n{full_req_one_info}",
+        reply_markup=inline_keyboard,
+        parse_mode='HTML'
+    )
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("edit_request_"))
+def edit_request_callback(call):
+    state_manager.user_state(call.message, "edit_request_admin")
+
+    edit_index = call.data.split("_")[-1]
+    print("edited index:", edit_index)
+
+    bot.send_message(call.message.chat.id, f"Edit the {edit_index}:")
+    bot.register_next_step_handler(call.message, lambda msg: edit_value_handler(msg, column=edit_index, user_id=call.message.chat.id))
+
+
+def edit_value_handler(message, column, user_id):
+    print("user id:", user_id)
+    oor.update_request(col_name=column, val=message.text, user_id=user_id)
+    bot.send_message(message.chat.id, f"The {column} is now set to {message.text}.")
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "all_by_admin")
+def handle_all_by_admin(call):
+    state_manager.user_state(call.message, "on_all_by_admin")
+
+    columns, req_data = oor.get_requests_all()
+    pg_nav.send_page(call.message.chat.id, page=1, columns=columns, data=req_data, context="requests", items_per_page=9)
+
+    bot.send_message(call.message.chat.id, "all by admin is on")
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("page_"))
+def handle_page_navigation(call):
+    try:
+        callback_data_parts = call.data.split("_")
+
+        page = int(callback_data_parts[1])
+        context = callback_data_parts[2]
+        columns, rows = oor.get_requests_all()
+        data = rows
+        items_per_page = 9
+        total_pages = (len(data) - 1) // items_per_page + 1
+        if page < 1 or page > total_pages:
+            logger.error(f"Page number out of bounds: {page} (total pages: {total_pages})")
+            return
+
+        pg_nav.send_page(call.message.chat.id, page=page, data=data, columns=columns, items_per_page=items_per_page,
+                  message_id=call.message.message_id, context=context)
+    except Exception as e:
+        logger.error(f"Error handling page navigation: {e}")
+        bot.answer_callback_query(call.id, text="There was an error. Please try again.")
+
 
 if __name__ == '__main__':
     bot.infinity_polling()
