@@ -2,10 +2,10 @@ import sqlite3
 
 db = 'account'
 
-def insert_order(request_id, is_confirmed, is_paid, admin_id):
+def insert_order(request_id, is_confirmed, is_paid, admin_id, date):
     connection = sqlite3.connect(db)
     with connection:
-        connection.execute("INSERT INTO orders (request_id, is_confirmed, is_paid, adminID) VALUES (?, ?, ?, ?)", (request_id, is_confirmed, is_paid, admin_id,))
+        connection.execute("INSERT INTO orders (request_id, is_confirmed, is_paid, adminID, date) VALUES (?, ?, ?, ?, ?)", (request_id, is_confirmed, is_paid, admin_id, date,))
     connection.close()
 
 
@@ -26,15 +26,17 @@ def get_orders(request_id):
     return result
 
 
-def get_request_by_vin(vin):
+def get_request_by_column(column, val, *args):
     connection = sqlite3.connect(db)
     cursor = connection.cursor()
-    cursor.execute(
-        "SELECT id FROM requests WHERE vin = ?",
-        (vin,)
-    )
+
+    columns = ", ".join(args) if args else "*"
+    query = f"SELECT {columns} FROM requests WHERE {column} = ?"
+
+    cursor.execute(query, (val,))
     result = cursor.fetchone()
     connection.close()
+
     return result
 
 
@@ -43,7 +45,7 @@ def get_requests_results(issue_by):
     connection = sqlite3.connect(db)
     cursor = connection.cursor()
     cursor.execute(
-        "SELECT Model, VIN, PlateNumber, Last_Price, VAT, username, last_modify_userID FROM requests WHERE last_modify_userID = ?",
+        "SELECT model, vin, platenumber, last_price, vat, username, issuerID, messageID FROM requests WHERE issuerID = ?",
         (issue_by,)
     )
     result = cursor.fetchone()
@@ -68,19 +70,39 @@ def get_requests_all(vin=None):
     return columns, rows
 
 
-def update_request(col_name, val, user_id):
-    try:
-        connection = sqlite3.connect(db)
-        cursor = connection.cursor()
+def check_status(vin):
+    connection = sqlite3.connect(db)
+    cursor = connection.cursor()
+    cursor.execute(
+        "SELECT status FROM requests WHERE vin = ?",
+        (vin,)
+    )
+    connection.commit()
+    result = cursor.fetchone()
+    connection.close()
+    return result
 
-        print(f"Executing update query...")
+
+def update_request(col_name, col_val, param, param_val):
+    connection = sqlite3.connect(db)
+    try:
+        cursor = connection.cursor()
         cursor.execute(
-            f"UPDATE requests SET {col_name} = ? WHERE last_modify_userID = ?", (val, user_id)
+            f"UPDATE requests SET {col_name} = ? WHERE {param} = ?", (col_val, param_val)
         )
         connection.commit()
-
-        print(f"Update successful for {col_name}")
     except sqlite3.OperationalError as e:
         print(f"Error updating the database: {e}")
     finally:
         connection.close()
+
+def delete_request(user_id):
+    connection = sqlite3.connect(db)
+    cursor = connection.cursor()
+    cursor.execute(
+        "DELETE FROM requests WHERE issuerID = ? and status = 'Cancelled'",
+        (user_id,)
+    )
+    connection.commit()
+    connection.close()
+

@@ -111,28 +111,28 @@ def format_data(columns, rows, context):
 def format_results(columns, rows, context):
     result_message = ""
     inline_keyboard = InlineKeyboardMarkup(row_width=3)
-    data_dict = {}
     key_count = 0
+    data_dict = {}
     editable_keys = []
 
     for index, row in enumerate(rows, start=1):
         data_dict = dict(zip(columns, row))  # Convert row to dictionary
         print(data_dict)
 
-        editable_keys = [key for key in data_dict.keys() if key.lower() not in ['username', 'id', 'last_modify_userid']]
+        editable_keys = [key for key in data_dict.keys() if key.lower() not in ['username', 'id', 'issuerID', 'status']]
         print(editable_keys)
         key_count = len(editable_keys)
         print(key_count)
 
-        result_message += f"<b>{index}.</b> Model: <b>{data_dict['Model']}</b>\n"
-        result_message += f"<b>{index+1}.</b> VIN: <b>{data_dict['VIN']}</b>\n"
-        result_message += f"<b>{index+2}.</b> Plate Number: <b>{data_dict['PlateNumber']}</b>\n"
-        result_message += f"<b>{index+3}.</b> Price: <b>{data_dict['Last_Price']}</b>\n"
-        result_message += f"<b>{index+4}.</b> VAT: <b>{data_dict['VAT']}</b>\n\n"
+        result_message += f"<b>{index}.</b> Model: <b>{data_dict['model']}</b>\n"
+        result_message += f"<b>{index+1}.</b> VIN: <b>{data_dict['vin']}</b>\n"
+        result_message += f"<b>{index+2}.</b> Plate Number: <b>{data_dict['plateNumber']}</b>\n"
+        result_message += f"<b>{index+3}.</b> Price: <b>{data_dict['last_price']}</b>\n"
+        result_message += f"<b>{index+4}.</b> VAT: <b>{data_dict['vat']}</b>\n\n"
         result_message += f"Requested by: <b>{data_dict['username']}</b>\n\n"
 
     buttons = [
-        InlineKeyboardButton(f"{index + 1}", callback_data=f"edit_request_{editable_keys[index]}")
+        InlineKeyboardButton(f"{index + 1}", callback_data=f"edit_request_{editable_keys[index]}_{data_dict['vin']}")
         for index in range(key_count)
     ]
     inline_keyboard.add(*buttons)

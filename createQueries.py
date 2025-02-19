@@ -22,13 +22,16 @@ def create_table():
         connection.execute("""
         CREATE TABLE IF NOT EXISTS requests (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            Model TEXT,
-            VIN TEXT,
-            PlateNumber TEXT,
-            Last_Price REAL,
-            VAT REAL,
-            last_modify_userID INTEGER,
-            username TEXT
+            model TEXT,
+            vin TEXT,
+            plateNumber TEXT,
+            last_price REAL,
+            vat REAL,
+            issuerID INTEGER,
+            username TEXT,
+            messageID INTEGER,
+            status TEXT,
+            date TEXT
         )
         """)
 
@@ -41,6 +44,7 @@ def create_table():
                 is_confirmed BOOLEAN DEFAULT 0,
                 is_paid TEXT DEFAULT 'pending',
                 adminID INTEGER,
+                date TEXT,
                 FOREIGN KEY (request_id) REFERENCES requests(id)
         )
         """)

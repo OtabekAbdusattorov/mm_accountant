@@ -199,6 +199,7 @@ def enter_vat(message):
         bot.send_message(message.chat.id, summary_message, reply_markup=inline_keyboard, parse_mode="HTML")
         state_manager.user_state(message, "awaiting_confirmation")
 
+
     except ValueError:
         bot.send_message(message.chat.id, "Oh my my my....! Please enter a valid number. You are not buying Mars."
                                           "\nIt is just a car:")
@@ -207,7 +208,8 @@ def enter_vat(message):
 
 @bot.callback_query_handler(func=lambda call: call.data == "confirm")
 def handle_confirmation(call):
-    user_id = call.from_user.id
+
+    user_id = call.message.chat.id
 
     ## get results from temp table
     car_info = temp_manager.get_temp_results(user_id)
@@ -217,12 +219,13 @@ def handle_confirmation(call):
         username = call.message.chat.first_name
 
         # Insert the information into the actual `requests` table
+        now_time = datetime.now().strftime("%Y-%m-%d %H:%M")
         connection = sqlite3.connect(db)
         with connection:
             connection.execute("""
-                INSERT INTO requests (last_modify_userID, username, Model, VIN, PlateNumber, Last_Price, VAT)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (user_id, username, model, vin, plate_number, last_price, vat))
+                INSERT INTO requests (model, vin, platenumber, last_price, vat, issuerID, username, messageID, date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (model, vin, plate_number, last_price, vat, user_id, username, call.message.message_id-1, now_time))
 
         # Clear the temp table for the user after insertion
         temp_manager.clear_temp_request(user_id)
@@ -276,69 +279,81 @@ def send_to_admins(username, last_modify_userID, model, vin, plate_number, last_
 @bot.callback_query_handler(func=lambda call: call.data == "confirm_by_admin")
 def handle_confirmation_by_admin(call):
 
-    last_modify_userID = None
-    vin = None
-    admin_id = call.message.chat.id
-
     message_text = call.message.text
-    user_id_line = [line for line in message_text.split('\n') if line.startswith("User ID:")]
-    if user_id_line:
-        last_modify_userID = user_id_line[0].split("User ID: ")[1]
-
+    vin = None
     vin_num = [line for line in message_text.split('\n') if line.startswith("VIN:")]
     if vin_num:
         vin = vin_num[0].split("VIN: ")[1]
 
-    req_info = oor.get_request_by_vin(vin)
+    req_id, issuer_id = oor.get_request_by_column("vin", vin, "id", "issuerID")
 
-    # Prepare a summary message
-    if req_info:
-        req_id = req_info[0]
-        oor.insert_order(req_id, 1, "Pending", admin_id)
+    result = oor.check_status(vin)
+
+    if result[0] != 'Confirmed':
+        admin_id = call.message.chat.id
+
+        # Prepare a summary message
+        now_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+        if req_id:
+            oor.insert_order(req_id, 1, "Pending", admin_id, now_time)
 
 
-    for admin in admin_ids + [last_modify_userID]:
-        bot.send_message(admin, f"Request has been confirmed by {call.message.chat.first_name}, and it is ready for payment.")
-    bot.send_message(admin_id, "You have confirmed that every data is correct and ready for payment. Thank you!")
+        for admin in admin_ids + [issuer_id]:
+            bot.send_message(admin, f"Request has been confirmed by {call.message.chat.first_name}, and it is ready for payment.")
+        bot.send_message(admin_id, "You have confirmed that every data is correct and ready for payment. Thank you!")
+        oor.update_request(col_name='status', col_val="Confirmed", param="vin", param_val=vin)
+
+    else:
+        bot.send_message(call.message.chat.id, "This request has been confirmed.")
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "cancel_by_admin")
 def handle_cancel_by_admin(call):
     message_text = call.message.text
-    user_id_line = [line for line in message_text.split('\n') if line.startswith("User ID:")]
-    username = ''
-    last_modify_userID = ''
 
-    if user_id_line:
-        last_modify_userID = user_id_line[0].split("User ID: ")[1]
+    vin = None
+    vin_num = [line for line in message_text.split('\n') if line.startswith("VIN:")]
+    if vin_num:
+        vin = vin_num[0].split("VIN: ")[1]
 
-    request_owner = oor.get_requests_results(last_modify_userID)
+    vin, username, issuer_id = oor.get_request_by_column("vin", vin, "vin", "username", "issuerID")
 
-    if request_owner:
-        username = request_owner[5]
+    oor.update_request(col_name='status', col_val="Cancelled", param="issuerID", param_val=issuer_id)
 
     msg = bot.send_message(
             call.message.chat.id,
-            f"Request has been cancelled by {call.message.chat.first_name}, and it will be returned to *{username}*.\n\n"
+            f"Request (VIN: {vin} by {username}) has been cancelled by {call.message.chat.first_name}, and it will be returned to *{username}*.\n\n"
             f"Explain the reason (mandatory): ", parse_mode="Markdown")
-    bot.register_next_step_handler(msg, lambda message: process_cancellation_reason(message,last_modify_userID, username))
+    bot.register_next_step_handler(msg, lambda message: process_cancellation_reason(message,issuer_id, vin, username))
 
 
-def process_cancellation_reason(msg, userID, username):
+def process_cancellation_reason(msg, issuer_id, vin, username):
     cancellation_reason = msg.text
 
-    bot.send_message(userID, f"❌ Your request has been cancelled, and is deleted by now.\n\n📌 *Reason:* {cancellation_reason}",
+    message_req_id = oor.get_request_by_column("issuerID", issuer_id, "messageID")[0]
+
+    bot.send_message(issuer_id, f"❌ Your request (VIN: {vin}) has been cancelled, and is deleted by now.\n\n📌 *Reason:* {cancellation_reason}",
         parse_mode="Markdown")
+
     for admin in admin_ids:
-        bot.send_message(admin, f"The message has been sent to *{username}*. The reason that has been entered:\n\n*{cancellation_reason}*", parse_mode="Markdown")
+        bot.send_message(admin, f"The request (VIN: {vin} by {username}) has been sent back to *{username}*. The reason that has been entered:\n\n*{cancellation_reason}*", parse_mode="Markdown")
+
         msg_id = msg_ids.get(admin)
-        if msg_id:
-            try:
-                bot.unpin_chat_message(admin, msg_id)
-            except Exception as e:
-                print(f"Failed to unpin message {msg_id} for admin {admin}: {e}")
-        else:
-            print(f"No pinned message found for admin {admin}")
+        try:
+            for i in range(msg_id, msg.message_id + 1):
+                try:
+                    bot.delete_message(admin, i)
+                except Exception as e:
+                    if "message to delete not found" in str(e):
+                        continue
+                    else:
+                        continue
+        except Exception as e:
+            print(f"General error while deleting messages for admin {admin}: {e}")
+
+    oor.delete_request(issuer_id)
+
+    bot.delete_message(issuer_id, message_req_id+1)
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "edit_by_admin")
@@ -347,12 +362,10 @@ def view_edit_requests_admin(call):
 
     message_text = call.message.text
 
-    last_modify_userID = None
+    last_modify_userid = None
     user_id_line = [line for line in message_text.split('\n') if line.startswith("User ID:")]
     if user_id_line:
-        last_modify_userID = user_id_line[0].split("User ID: ")[1]
-
-    print("issued by ", last_modify_userID)
+        last_modify_userid = user_id_line[0].split("User ID: ")[1]
 
     vin=None
     vin_num = [line for line in message_text.split('\n') if line.startswith("VIN:")]
@@ -362,13 +375,6 @@ def view_edit_requests_admin(call):
     columns, req_one_data = oor.get_requests_all(vin)
 
     full_req_one_info, inline_keyboard = pg_nav.format_results(columns, req_one_data, context="requests_edit")
-
-    print("database update is ...")
-
-    oor.update_request(col_name='last_modify_userID', val=call.message.chat.id, user_id=last_modify_userID)
-    oor.update_request(col_name='username', val=call.message.chat.first_name, user_id=call.message.chat.id)
-
-    print("database update was ...")
 
     bot.send_message(
         chat_id=call.message.chat.id,
@@ -382,17 +388,20 @@ def view_edit_requests_admin(call):
 def edit_request_callback(call):
     state_manager.user_state(call.message, "edit_request_admin")
 
-    edit_index = call.data.split("_")[-1]
-    print("edited index:", edit_index)
+    edit_index = call.data.split("_")[-2]
+    vin = call.data.split("_")[-1]
 
     bot.send_message(call.message.chat.id, f"Edit the {edit_index}:")
-    bot.register_next_step_handler(call.message, lambda msg: edit_value_handler(msg, column=edit_index, user_id=call.message.chat.id))
+    bot.register_next_step_handler(call.message, lambda msg: edit_value_handler(msg, edit_index, vin))
 
 
-def edit_value_handler(message, column, user_id):
-    print("user id:", user_id)
-    oor.update_request(col_name=column, val=message.text, user_id=user_id)
-    bot.send_message(message.chat.id, f"The {column} is now set to {message.text}.")
+def edit_value_handler(message, column, vin):
+
+    oor.update_request(col_name=f'{column}', col_val=message.text, param="vin", param_val=vin)
+    oor.update_request(col_name="status", col_val="Edited", param="vin", param_val=vin)
+
+    for admin in admin_ids:
+        bot.send_message(admin, f"VIN: {vin}. The {column} is now set to {message.text}.")
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "all_by_admin")
