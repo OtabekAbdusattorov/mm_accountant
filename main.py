@@ -573,16 +573,24 @@ def process_exchange_rate(message, vin, user_id, price):
 
         bot.send_message(
             user_id,
-            f"From <b>{message.chat.first_name}</b>\n\n✅ Exchange rate for VIN {vin} is set to: {rate} 💰\n\nfor VIN: `{vin}`\n\nPrice: {price} / {rate}= {rate_price:.2f}"
+            f"From <b>{message.chat.first_name}</b>\n\n✅ Exchange rate set to: {rate} 💰\n\nfor VIN: `{vin}`\n\nPrice: {price} / {rate}= {rate_price:.2f}"
             , parse_mode="HTML"
         )
 
         for admin in admin_ids:
             bot.send_message(
                 admin,
-                f"From <b>{message.chat.first_name}</b>\n\n✅ Exchange rate for VIN {vin} is set to: {rate} 💰\n\nfor VIN: `{vin}`\n\nPrice: {price} / {rate}= {rate_price:.2f}\n"
+                f"From <b>{message.chat.first_name}</b>\n\n✅ Exchange rate set to: {rate} 💰\n\nfor VIN: `{vin}`\n\nPrice: {price} / {rate}= {rate_price:.2f}"
                 , parse_mode="HTML"
             )
+        for i in range(message.message_id-2, message.message_id):
+            try:
+                bot.delete_message(message.chat.id, message.message_id)
+            except Exception as e:
+                if "message to delete not found" in str(e):
+                    continue
+            else:
+                    continue
 
     except ValueError:
         bot.send_message(message.chat.id, "❌ Invalid input. Please enter a valid number.")
