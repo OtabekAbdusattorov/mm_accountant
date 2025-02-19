@@ -2,10 +2,51 @@ import sqlite3
 
 db = 'account'
 
+
+def insert_admin(admin_id, request_id, status_req, payment_status, message_id, date):
+    connection = sqlite3.connect(db)
+    with connection:
+        connection.execute(
+            "INSERT INTO admins (adminID, requestID, status_req, payment_status, messageID, date) VALUES (?, ?, ?, ?, ?, ?)",
+            (admin_id, request_id, status_req, payment_status, message_id, date)
+        )
+    connection.close()
+
+
+def get_admin_by_column(column, val, *args):
+    connection = sqlite3.connect(db)
+    cursor = connection.cursor()
+
+    columns = ", ".join(args) if args else "*"
+    query = f"SELECT {columns} FROM admins WHERE {column} = ?"
+
+    cursor.execute(query, (val,))
+    result = cursor.fetchone()
+    connection.close()
+
+    return result
+
+
+def update_admin(col_name, col_val, param, param_val):
+    connection = sqlite3.connect(db)
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            f"UPDATE admins SET {col_name} = ? WHERE {param} = ?", (col_val, param_val)
+        )
+        connection.commit()
+    except sqlite3.OperationalError as e:
+        print(f"Error updating the database: {e}")
+    finally:
+        connection.close()
+
+
+
 def insert_order(request_id, is_confirmed, is_paid, admin_id, date):
     connection = sqlite3.connect(db)
     with connection:
-        connection.execute("INSERT INTO orders (request_id, is_confirmed, is_paid, adminID, date) VALUES (?, ?, ?, ?, ?)", (request_id, is_confirmed, is_paid, admin_id, date,))
+        connection.execute("INSERT INTO orders (request_id, is_confirmed, is_paid, adminID, date) VALUES (?, ?, ?, ?, ?)",
+            (request_id, is_confirmed, is_paid, admin_id, date,))
     connection.close()
 
 
@@ -26,6 +67,21 @@ def get_orders(request_id):
     return result
 
 
+def update_orders(col_name, col_val, param, param_val):
+    connection = sqlite3.connect(db)
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            f"UPDATE orders SET {col_name} = ? WHERE {param} = ?", (col_val, param_val)
+        )
+        connection.commit()
+    except sqlite3.OperationalError as e:
+        print(f"Error updating the database: {e}")
+    finally:
+        connection.close()
+
+
+
 def get_request_by_column(column, val, *args):
     connection = sqlite3.connect(db)
     cursor = connection.cursor()
@@ -37,19 +93,6 @@ def get_request_by_column(column, val, *args):
     result = cursor.fetchone()
     connection.close()
 
-    return result
-
-
-## get the infos from requests table
-def get_requests_results(issue_by):
-    connection = sqlite3.connect(db)
-    cursor = connection.cursor()
-    cursor.execute(
-        "SELECT model, vin, platenumber, last_price, vat, username, issuerID, messageID FROM requests WHERE issuerID = ?",
-        (issue_by,)
-    )
-    result = cursor.fetchone()
-    connection.close()
     return result
 
 

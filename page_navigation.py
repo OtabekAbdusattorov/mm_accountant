@@ -116,25 +116,25 @@ def format_results(columns, rows, context):
     editable_keys = []
 
     for index, row in enumerate(rows, start=1):
-        data_dict = dict(zip(columns, row))  # Convert row to dictionary
-        print(data_dict)
+        data_dict = dict(zip(columns, row))
 
-        editable_keys = [key for key in data_dict.keys() if key.lower() not in ['username', 'id', 'issuerID', 'status']]
-        print(editable_keys)
+        editable_keys = [key for key in data_dict.keys() if key.lower() not in ['username', 'id', 'issuerid', 'status', 'date', 'messageid']]
         key_count = len(editable_keys)
-        print(key_count)
 
         result_message += f"<b>{index}.</b> Model: <b>{data_dict['model']}</b>\n"
         result_message += f"<b>{index+1}.</b> VIN: <b>{data_dict['vin']}</b>\n"
         result_message += f"<b>{index+2}.</b> Plate Number: <b>{data_dict['plateNumber']}</b>\n"
         result_message += f"<b>{index+3}.</b> Price: <b>{data_dict['last_price']}</b>\n"
-        result_message += f"<b>{index+4}.</b> VAT: <b>{data_dict['vat']}</b>\n\n"
+        result_message += f"<b>{index+4}.</b> VAT: <b>{data_dict['vat']}</b>\n"
+        result_message += f"<b>{index+5}.</b> Dealer phone number: <b>{data_dict['phoneNumber']}</b>\n"
+        result_message += f"<b>{index+6}.</b> Bank account number: <b>{data_dict['bankNumber']}</b>\n\n"
         result_message += f"Requested by: <b>{data_dict['username']}</b>\n\n"
 
     buttons = [
-        InlineKeyboardButton(f"{index + 1}", callback_data=f"edit_request_{editable_keys[index]}_{data_dict['vin']}")
+        InlineKeyboardButton(f"{index + 1}", callback_data=f"edit_request_{editable_keys[index]}_{data_dict['id']}")
         for index in range(key_count)
     ]
+
     inline_keyboard.add(*buttons)
 
 

@@ -27,6 +27,8 @@ def create_table():
             plateNumber TEXT,
             last_price REAL,
             vat REAL,
+            phoneNumber TEXT,
+            bankNumber TEXT,
             issuerID INTEGER,
             username TEXT,
             messageID INTEGER,
@@ -45,7 +47,24 @@ def create_table():
                 is_paid TEXT DEFAULT 'pending',
                 adminID INTEGER,
                 date TEXT,
+                rate INTEGER,
                 FOREIGN KEY (request_id) REFERENCES requests(id)
+        )
+        """)
+
+
+        ## admin table to store admin activity
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS admins (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                adminID INTEGER,
+                requestID INTEGER,
+                status_req TEXT,
+                payment_status TEXT,
+                messageID INTEGER,
+                is_completed BOOLEAN DEFAULT 0,
+                date TEXT,
+                FOREIGN KEY (requestID) REFERENCES requests(id)
         )
         """)
 
@@ -59,7 +78,9 @@ def create_table():
                 vin TEXT UNIQUE,
                 plate_number TEXT UNIQUE,
                 last_price REAL,
-                vat REAL
+                vat REAL,
+                phoneNumber TEXT,
+                bankNumber TEXT
         )
         """)
 

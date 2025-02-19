@@ -12,7 +12,7 @@ def fetch_all_data_for_admin():
     cursor = connection.cursor()
 
     # Query to fetch all requests data
-    cursor.execute("SELECT Model, VIN, PlateNumber, Last_Price, VAT, username, issuerID FROM requests")
+    cursor.execute("SELECT Model, VIN, PlateNumber, Last_Price, VAT, username, issuerID, phoneNumber, bankNumber, status date FROM requests")
 
     # Get all data and column names
     data = cursor.fetchall()
@@ -45,7 +45,7 @@ def fetch_data_from_database_for_user(last_modify_userID):
     connection = sqlite3.connect(db)
     cursor = connection.cursor()
     cursor.execute(
-        "SELECT Model, VIN, PlateNumber, Last_Price, VAT, username, issuerID FROM requests WHERE last_modify_userID = ?",
+        "SELECT Model, VIN, PlateNumber, Last_Price, VAT, username, issuerID, phoneNumber, bankNumber, status FROM requests WHERE last_modify_userID = ?",
         (last_modify_userID,)
     )
     data = cursor.fetchall()
