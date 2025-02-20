@@ -23,7 +23,6 @@ def get_admin_by_column(column, val, *args):
     cursor.execute(query, (val,))
     result = cursor.fetchone()
     connection.close()
-
     return result
 
 

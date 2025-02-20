@@ -26,13 +26,14 @@ def create_table():
             vin TEXT,
             plateNumber TEXT,
             last_price REAL,
+            paidprice REAL,
             vat REAL,
             phoneNumber TEXT,
-            bankNumber TEXT,
             issuerID INTEGER,
             username TEXT,
             messageID INTEGER,
             status TEXT,
+            documents BOOLEAN DEFAULT 0,
             date TEXT
         )
         """)
@@ -60,7 +61,7 @@ def create_table():
                 adminID INTEGER,
                 requestID INTEGER,
                 status_req TEXT,
-                payment_status TEXT,
+                payment_status TEXT DEFAULT 'pending',
                 messageID INTEGER,
                 is_completed BOOLEAN DEFAULT 0,
                 date TEXT,
@@ -79,8 +80,7 @@ def create_table():
                 plate_number TEXT UNIQUE,
                 last_price REAL,
                 vat REAL,
-                phoneNumber TEXT,
-                bankNumber TEXT
+                phoneNumber TEXT
         )
         """)
 
