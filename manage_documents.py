@@ -57,23 +57,33 @@ def unzip_and_send_files(user_id, zip_filename):
 
     # Create a temporary directory to extract files
     with tempfile.TemporaryDirectory() as tmpdirname:
-        with zipfile.ZipFile(zip_filename, "r") as zipf:
-            zipf.extractall(tmpdirname)
+        try:
+            with zipfile.ZipFile(zip_filename, "r") as zipf:
+                zipf.extractall(tmpdirname)
 
-        # Send each extracted image to the user
-        sent_files = []
-        for root, _, files in os.walk(tmpdirname):
-            for file in sorted(files):  # Ensure images are sent in order
-                file_path = os.path.join(root, file)
-                with open(file_path, "rb") as f:
-                    if user_id in admin_ids:
-                        for admins in admin_ids:
-                            sent_files.append(bot.send_document(admins, f))
-                    else:
-                        for admins in admin_ids + user_id:
-                            sent_files.append(bot.send_document(admins, f))
+            sent_files = []
+            for root, _, files in os.walk(tmpdirname):
+                for file in sorted(files):  # Ensure images are sent in order
+                    file_path = os.path.join(root, file)
 
-    if sent_files:
-        bot.send_message(user_id, "All images have been successfully extracted and sent.")
-    else:
-        bot.send_message(user_id, "No images were found inside the ZIP file.")
+                    # **Check if file exists and is non-empty**
+                    if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+                        bot.send_message(user_id, f"Skipping empty or missing file: {file}")
+                        continue  # Skip empty files
+
+                    with open(file_path, "rb") as f:
+                        bot.send_document(user_id, f)
+
+                    sent_files.append(file_path)
+
+            # Send confirmation message if files were sent
+            if sent_files:
+                bot.send_message(user_id, "All images have been successfully extracted and sent.")
+            else:
+                bot.send_message(user_id, "No valid images were found inside the ZIP file.")
+
+        except zipfile.BadZipFile:
+            bot.send_message(user_id, "The ZIP file is corrupted and cannot be opened.")
+        except Exception as e:
+            bot.send_message(user_id, f"An error occurred while processing the ZIP file: {str(e)}")
+

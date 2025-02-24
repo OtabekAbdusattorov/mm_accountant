@@ -390,7 +390,9 @@ def confirm_request(call, vin, req_id, issuer_id):
 
     # Send payment button
     inline_keyboard = InlineKeyboardMarkup().add(
-        InlineKeyboardButton("Payment 💳️", callback_data=f"payment_user_{vin}")
+        InlineKeyboardButton("Payment 💳️", callback_data=f"payment_user_{vin}"),
+            InlineKeyboardButton("Fees in Korea 🇰🇷", callback_data=f"fees_korea_{vin}"),
+            InlineKeyboardButton("Overseas Fee 🌍", callback_data=f"fees_overseas_{vin}")
     )
     bot.send_message(issuer_id,
                      text=f"This request (VIN: {vin}) has been confirmed, and ready for payment. 💳 Payment status:\n⏳ PENDING...",
@@ -407,31 +409,35 @@ def handle_confirmation_by_admin(call):
     if vin_num:
         vin = vin_num[0].split("VIN: ")[1]
 
-    req_id = None
-    req_id_num = [line for line in message_text.split('\n') if line.startswith("Request ID:")]
-    if req_id_num:
-        req_id = req_id_num[0].split("Request ID: ")[1]
+    if not vin:
+        bot.send_message(call.message.chat.id, "❌ VIN not found in the message.")
+        return
 
+    query_result = oot.get_request_by_column("vin", vin, "issuerID", "id")
 
-    issuer_id, req_id = oot.get_request_by_column("vin", vin, "issuerID", "id")
+    if not query_result:
+        bot.send_message(call.message.chat.id, f"❌ No request found for VIN: {vin}.")
+        return
+
+    issuer_id, req_id = query_result
 
     result_admin = oot.get_admin_by_column("requestID", req_id, "status_req")
 
+    now_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    admin_id = call.message.chat.id
+
     if result_admin:
         status = result_admin[0]
-
         if status in ["Confirmed", "Cancelled"]:
             bot.send_message(call.message.chat.id, "This request has been confirmed or cancelled.")
         else:
             confirm_request(call, vin, req_id, issuer_id)
             oot.update_admin(col_name="status_req", col_val="Confirmed", param="requestID", param_val=req_id)
+            oot.insert_order(req_id, 1, "Pending", admin_id, now_time)
     else:
-        admin_id = call.message.chat.id
-
         msg_id = msg_ids.get(admin_id)
 
-        # Prepare a summary message
-        now_time = datetime.now().strftime("%Y-%m-%d %H:%M")
         if req_id:
             oot.insert_order(req_id, 1, "Pending", admin_id, now_time)
             oot.insert_admin(call.message.chat.id, req_id, "Confirmed", "Pending", msg_id, now_time)
@@ -550,7 +556,6 @@ def view_edit_requests_admin(call):
         send_request_info(call.message.chat.id, vin)
 
 
-
 @bot.callback_query_handler(func=lambda call: call.data.startswith("edit_request_"))
 def edit_request_callback(call):
     state_manager.user_state(call.message, "edit_request_admin")
@@ -573,6 +578,18 @@ def edit_value_handler(message, column, req_id):
     if msg_id is None:
         bot.send_message(message.chat.id, "❌ Error: Cannot edit message. Message ID not found.")
         return
+
+    # Validate VIN if editing VIN
+    if column == "vin":
+        if not is_valid_vin(message.text):
+            bot.send_message(message.chat.id, "❌ Invalid VIN! It must be exactly 17 characters long and contain only uppercase letters and numbers.")
+            return
+
+    # Validate price if editing price-related fields
+    if column in ["last_price", "vat"]:
+        if not message.text.isdigit():
+            bot.send_message(message.chat.id, "❌ Invalid input! Please enter a valid number for the price.")
+            return
 
     now_time = datetime.now().strftime("%Y-%m-%d %H:%M")
 
@@ -605,6 +622,57 @@ def edit_value_handler(message, column, req_id):
                     continue
 
 
+@bot.callback_query_handler(func=lambda call: call.data.startswith("fees_"))
+def fees(call):
+    """Handles fees input for Korea or Overseas."""
+
+    user_id = call.message.chat.id
+    type_fee = call.data.split("_")[-2]  # 'korea' or 'overseas'
+    vin = call.data.split("_")[-1]
+
+    # Get request ID
+    req_id = oot.get_request_by_column("vin", vin, "id")
+
+    if not req_id:
+        bot.send_message(user_id, "Request not found.")
+        return
+
+    req_id = req_id[0]
+
+    if type_fee == "korea":
+        currency = "₩"
+    else:
+        currency = "$"
+
+    bot.send_message(user_id, f"Please enter the {type_fee.capitalize()} fee in {currency} for VIN: {vin} in numbers.")
+    bot.register_next_step_handler(call.message, handle_fee_input, type_fee, req_id, vin)
+
+
+def handle_fee_input(message, fee_type, req_id, vin):
+    user_id = message.chat.id
+
+    # Validate that the input is a number
+    if not message.text.isdigit():
+        bot.send_message(user_id, "Invalid input. Please enter a valid numeric amount.")
+        return
+
+    fee_amount = int(message.text)
+
+    # Update the fee in the database based on the fee type (Korea or Overseas)
+    if fee_type == "korea":
+        oot.update_orders(col_name="kfee", col_val=fee_amount, param="request_id", param_val=req_id)
+    else:
+        oot.update_orders(col_name="overseasfee", col_val=fee_amount, param="request_id", param_val=req_id)
+
+    # Send confirmation message to the user
+    bot.send_message(user_id, f"The {fee_type.capitalize()} fee for VIN {vin} has been updated to {fee_amount}.")
+
+    # Notify admins about the fee update
+    for admin in admin_ids:
+        bot.send_message(admin, f"{fee_type.capitalize()} fee for VIN {vin} has been updated to {fee_amount}.")
+
+
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith("payment_user"))
 def payment_user(call):
     vin = call.data.split("_")[-1]
@@ -616,6 +684,19 @@ def payment_user(call):
 def ask_for_price(message, vin):
     if message.photo:
         picture = message.photo[-1].file_id
+
+        # Get file details and download the image
+        file_info = bot.get_file(picture)
+        downloaded_file = bot.download_file(file_info.file_path)
+
+        folder_path = 'content/payment_images'
+        os.makedirs(folder_path, exist_ok=True)
+
+        # Save the picture with a unique name (you can include the VIN in the filename)
+        file_path = os.path.join(folder_path, f"{vin}_payment.jpg")
+        with open(file_path, 'wb') as f:
+            f.write(downloaded_file)
+
         bot.send_message(message.chat.id, "Now, please send the price.")
         bot.register_next_step_handler(message, send_price, picture, vin)
     else:
@@ -629,10 +710,14 @@ def send_price(message, picture, vin):
 
         oot.update_request(col_name="paidprice", col_val=price, param="vin", param_val=vin)
 
-        inline_keyboard = InlineKeyboardMarkup()
+        inline_keyboard = InlineKeyboardMarkup(row_width=2)
         exchange_rate_button = InlineKeyboardButton("Exchange rate 💰", callback_data=f"exchange_rate_{vin}")
+        fees_korea_button = InlineKeyboardButton("Fees in Korea 🇰🇷", callback_data=f"fees_korea_{vin}")
+        fees_overseas_button = InlineKeyboardButton("Overseas Fee 🌍", callback_data=f"fees_overseas_{vin}")
         payment_button = InlineKeyboardButton("Order completed ✅", callback_data=f"order_completed_{vin}")
+
         inline_keyboard.add(exchange_rate_button)
+        inline_keyboard.add(fees_korea_button, fees_overseas_button)
         inline_keyboard.add(payment_button)
 
         username = oot.get_request_by_column("vin", vin, "username")[0]
@@ -647,7 +732,7 @@ def send_price(message, picture, vin):
             )
 
         upload_keyboard = InlineKeyboardMarkup()
-        upload_button = InlineKeyboardButton("Upload documents", callback_data=f"upload_doc_{vin}")
+        upload_button = InlineKeyboardButton("Upload documents 📄", callback_data=f"upload_doc_{vin}")
         upload_keyboard.add(upload_button)
 
         bot.send_message(message.chat.id, f"Your payment details for (VIN: {vin}) have been sent to the admin 💼."
@@ -669,7 +754,7 @@ def upload_doc(call):
     result = oot.get_request_by_column("vin", vin, "documents")
 
     if result[0] == 0:
-        sent_msg = bot.send_message(call.message.chat.id, "Please upload document images.")
+        sent_msg = bot.send_message(call.message.chat.id, "Please upload document images. Up to 5 images.")
         user_last_message[call.message.chat.id] = sent_msg.message_id
         state_manager.user_state(call.message, f"awaiting_images_{vin}")
     else:
@@ -700,7 +785,7 @@ def handle_uploaded_images(message):
         bot.send_message(user_id, "Creating your ZIP file now...")
         zip_path = md.create_zip_and_save(user_images, user_id, vin)
         if zip_path:
-            bot.send_document(user_id, open(zip_path, 'rb'))  # Send the ZIP file to the user
+            bot.send_document(user_id, open(zip_path, 'rb'))
             os.remove(zip_path)  # Cleanup
         message_sent_flags.pop(user_id, None)
 
@@ -722,9 +807,10 @@ def handle_done_command(message):
         bot.send_message(user_id, "Zipping your images now...")
         zip_path = md.create_zip_and_save(user_images, user_id, vin)
 
+        oot.update_request(col_name="documents", col_val=1, param_val=vin, param="vin")
+
         if zip_path:
-            md.unzip_and_send_files(user_id, zip_path) # Send ZIP file to the user
-            os.remove(zip_path)  # Cleanup
+            md.unzip_and_send_files(user_id, zip_path)
 
         message_sent_flags.pop(user_id, None)
     else:
@@ -747,7 +833,7 @@ def process_exchange_rate(message, req_id, user_id, price, vin):
         rate = float(message.text.strip())
         rate_price = float(price / rate)
 
-        oot.update_orders(col_name="request_id", col_val=req_id, param="rate", param_val=int(rate))
+        oot.update_orders(col_name="rate", col_val=rate, param="request_id", param_val=req_id)
 
         bot.send_message(
             user_id,
@@ -805,35 +891,58 @@ def order_complete(call):
 
 
 @bot.message_handler(commands=['all_orders'])
-def handle_all_by_admin(call):
-    state_manager.user_state(call.message, "all_orders")
+def handle_all_orders(message):
+    state_manager.user_state(message, "all_orders")
 
-    columns, req_data = oot.get_requests_all()
-    pg_nav.send_page(call.message.chat.id, page=1, columns=columns, data=req_data, context="requests", items_per_page=9)
+    user_id = message.chat.id
+    if user_id in admin_ids:
+        columns, all_orders_data = oot.get_requests_all()
+    else:
+        columns, all_orders_data = oot.get_request_by_column("issuerID", user_id, "id", "model", "vin")
+    pg_nav.send_page(message.chat.id, page=1, data=all_orders_data, columns=columns, items_per_page=9, context="all_orders")
 
-    bot.send_message(call.message.chat.id, "all orders for admin is on")
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("all_orders_"))
+def view_all_orders(call):
+    req_id = call.data.split("_")[-1]
+
+    columns, request_data = oot.all_orders_info(req_id)
+
+    full_request_info, inline_keyboard = pg_nav.format_results(columns, request_data, "all_orders")
+
+    bot.send_message(
+        chat_id=call.message.chat.id,
+        text=f"<b>Request Info:</b>\n\n{full_request_info}",
+        parse_mode="HTML",
+        reply_markup=inline_keyboard
+    )
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("page_"))
-def handle_page_navigation(call):
-    try:
-        callback_data_parts = call.data.split("_")
+@bot.callback_query_handler(func=lambda call: call.data.startswith("documents_show_"))
+def show_documents(call):
+    vin = call.data.split("_")[-1]
+    zip_filename = f"documents/{vin}_documents.zip"
 
-        page = int(callback_data_parts[1])
-        context = callback_data_parts[2]
-        columns, rows = oot.get_requests_all()
-        data = rows
-        items_per_page = 9
-        total_pages = (len(data) - 1) // items_per_page + 1
-        if page < 1 or page > total_pages:
-            logger.error(f"Page number out of bounds: {page} (total pages: {total_pages})")
-            return
+    if not os.path.exists(zip_filename):
+        bot.send_message(call.message.chat.id, "No documents found for this VIN.")
+        return
 
-        pg_nav.send_page(call.message.chat.id, page=page, data=data, columns=columns, items_per_page=items_per_page,
-                  message_id=call.message.message_id, context=context)
-    except Exception as e:
-        logger.error(f"Error handling page navigation: {e}")
-        bot.answer_callback_query(call.id, text="There was an error. Please try again.")
+    bot.send_message(call.message.chat.id, "Retrieving documents... Please wait.")
+    md.unzip_and_send_files(call.message.chat.id, zip_filename)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("payment_show_"))
+def retrieve_payment(call):
+    vin = call.data.split("_")[-1]
+    file_path = f"content/payment_images/{vin}_payment.jpg"
+
+    if os.path.exists(file_path):
+        with open(file_path, "rb") as f:
+            bot.send_photo(call.message.chat.id, f)
+            bot.send_message(call.message.chat.id, f"Here is the payment proof for VIN: {vin}.")
+    else:
+        bot.send_message(call.message.chat.id, "❌ No payment proof found for this VIN.")
+
 
 
 if __name__ == '__main__':

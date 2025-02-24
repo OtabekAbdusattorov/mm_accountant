@@ -1,4 +1,5 @@
 import sqlite3
+from main import admin_ids
 
 db = 'account'
 
@@ -148,3 +149,43 @@ def delete_request(user_id):
     connection.commit()
     connection.close()
 
+
+def all_orders_info(req_id):
+    connection = sqlite3.connect(db)
+    cursor = connection.cursor()
+    query = """
+        SELECT r.model, r.plateNumber, r.vin, r.last_price, r.vat, r.phoneNumber, r.paidprice, 
+                r.documents, o.rate, o.kfee, o.overseasfee, r.date, r.username
+        FROM requests r
+        JOIN orders o ON o.request_id = r.id
+        WHERE r.id = ?
+    """
+
+    cursor.execute(query, (req_id,))  # Corrected tuple syntax
+    result = cursor.fetchall()  # Get all data
+
+    columns = [desc[0] for desc in cursor.description]
+
+    connection.close()
+
+    return columns, result
+
+
+def status_query(req_id):
+    connection = sqlite3.connect(db)
+    cursor = connection.cursor()
+    query = """
+        SELECT o.kfee, o.overseasfee, o.rate, a.is_completed
+            FROM orders o
+            JOIN admins a ON a.requestID = o.request_id
+            WHERE o.request_id = ?
+    """
+
+    cursor.execute(query, (req_id,))
+    result = cursor.fetchall()
+
+    columns = [desc[0] for desc in cursor.description]
+
+    connection.close()
+
+    return columns, result

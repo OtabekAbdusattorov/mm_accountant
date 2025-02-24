@@ -32,7 +32,7 @@ class TempTableManager:
         connection = sqlite3.connect(self.db)
         cursor = connection.cursor()
         cursor.execute(
-            "SELECT model, vin, plate_number, last_price, vat, phoneNumber, bankNumber FROM temp_requests WHERE user_id = ?",
+            "SELECT model, vin, plate_number, last_price, vat, phoneNumber FROM temp_requests WHERE user_id = ?",
             (user_id,)
         )
         result = cursor.fetchone()

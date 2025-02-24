@@ -13,6 +13,7 @@ def create_table():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
             state TEXT,
+            balance REAL,
             date TEXT
         )
         """)
@@ -49,6 +50,8 @@ def create_table():
                 adminID INTEGER,
                 date TEXT,
                 rate INTEGER,
+                kfee REAL,
+                overseasfee REAL,
                 FOREIGN KEY (request_id) REFERENCES requests(id)
         )
         """)
