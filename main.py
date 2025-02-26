@@ -939,7 +939,7 @@ def retrieve_payment(call):
     if os.path.exists(file_path):
         with open(file_path, "rb") as f:
             bot.send_photo(call.message.chat.id, f)
-            bot.send_message(call.message.chat.id, f"Here is the payment proof for VIN: {vin}.")
+            bot.send_message(call.message.chat.id, f"Receipt for VIN: {vin}.")
     else:
         bot.send_message(call.message.chat.id, "❌ No payment proof found for this VIN.")
 
