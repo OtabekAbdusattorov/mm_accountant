@@ -8,8 +8,8 @@ import telebot \
     , os \
     , send_file_pic as sfp \
     , userState \
-    , createQueries as cq \
-    , tempTableManager as ttm \
+    , createQueries as cQ \
+    , tempTableManager as tTM \
     , operations_on_tables as oot \
     , page_navigation as pg_nav \
     , re \
@@ -40,7 +40,7 @@ time = datetime.now().strftime("%d/%m/%Y %H:%M")
 bot = telebot.TeleBot(bot_token)
 
 ## Function create all necessary tables
-cq.create_table()
+cQ.create_table()
 
 
 ###### STATE MANAGER ######
@@ -48,7 +48,7 @@ state_manager = userState.UserStateManager(db)
 
 
 ###### CLASS TEMP TABLE MANAGER ######
-temp_manager = ttm.TempTableManager(db)
+temp_manager = tTM.TempTableManager(db)
 
 
 ## pinned messages = []
@@ -80,9 +80,9 @@ def start(message):
 
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
 
-    full_list = KeyboardButton("Full list")
-    send_request = KeyboardButton("Send request")
-    keyboard.row(full_list, send_request)
+    full_List = KeyboardButton("Full list")
+    send_Request = KeyboardButton("Send request")
+    keyboard.row(full_List, send_Request)
     bot.send_message(message.chat.id,"Welcome! Please choose an option below:" ,reply_markup=keyboard)
 
 
