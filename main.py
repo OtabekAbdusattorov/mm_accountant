@@ -941,7 +941,7 @@ def retrieve_payment(call):
             bot.send_photo(call.message.chat.id, f)
             bot.send_message(call.message.chat.id, f"Receipt for VIN: {vin}.")
     else:
-        bot.send_message(call.message.chat.id, "❌ No payment proof found for this VIN.")
+        bot.send_message(call.message.chat.id, "❌ No receipt found for this VIN.")
 
 
 
