@@ -128,7 +128,7 @@ def send_request(message):
 
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
 
-    sent_msg = bot.send_message(message.chat.id,"Enter the model name:\ne.g:\nVolkswagen Touareg,\nMercedes-AMG CLS63,\nKia Carnival" ,reply_markup=keyboard)
+    sent_msg = bot.send_message(message.chat.id,"Enter the model name:\ne.g:\nVolkswagen Touareg,\nMercedes-AMG CLS63,\nKia Carnival", reply_markup=keyboard)
     user_last_message[message.chat.id] = sent_msg.message_id
     bot.delete_message(message.chat.id, message.message_id)
     state_manager.user_state(message, "enter_model")
@@ -181,7 +181,7 @@ def enter_vin(message):
             state_manager.user_state(message, "enter_vin")
         else:
             if temp_manager.vin_exists(vin):
-                sent_msg = bot.send_message(message.chat.id, "Don't play with me mthrf**r! You used this VIN number already! 🚫")
+                sent_msg = bot.send_message(message.chat.id, "Don't play with me! You used this VIN number already! 🚫")
                 state_manager.user_state(message, "enter_vin")
             else:
                 temp_manager.update_temp_results(user_id, "vin", vin)
