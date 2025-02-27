@@ -978,7 +978,7 @@ def handle_balance(message):
                 balance, issuer_id = result
                 if balance is not None:  # Skip entries with None as balance
                     username = oot.get_request_by_column("issuerID", issuer_id, "username")[0]
-                    balances_text += f"Username: {username}\nBalance: {balance:,}\n\n"
+                    balances_text += f"Username: {username}\nBalance: {balance:,}₩\n\n"
 
             if balances_text:
                 bot.send_message(user_id, f"All Users' Balances:\n\n{balances_text}")
@@ -994,7 +994,7 @@ def handle_balance(message):
             balance, user_id = result
             if balance is not None:
                 username = oot.get_request_by_column("issuerID", user_id, "username")[0]
-                bot.send_message(user_id, f"Username: {username}\nBalance: {balance}")
+                bot.send_message(user_id, f"Username: {username}\nBalance: {balance:,}₩")
             else:
                 bot.send_message(user_id, "Your balance is not set.")
         else:
