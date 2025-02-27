@@ -1,5 +1,4 @@
 import threading
-
 from dotenv import load_dotenv
 from datetime import datetime
 import telebot \
@@ -427,6 +426,8 @@ def handle_confirmation_by_admin(call):
 
     admin_id = call.message.chat.id
 
+    msg_id = msg_ids.get(admin_id)
+
     if result_admin:
         status = result_admin[0]
         if status in ["Confirmed", "Cancelled"]:
@@ -436,12 +437,18 @@ def handle_confirmation_by_admin(call):
             oot.update_admin(col_name="status_req", col_val="Confirmed", param="requestID", param_val=req_id)
             oot.insert_order(req_id, 1, "Pending", admin_id, now_time)
     else:
-        msg_id = msg_ids.get(admin_id)
-
         if req_id:
             oot.insert_order(req_id, 1, "Pending", admin_id, now_time)
             oot.insert_admin(call.message.chat.id, req_id, "Confirmed", "Pending", msg_id, now_time)
             confirm_request(call, vin, req_id, issuer_id)
+    for admin in admin_ids:
+        try:
+            bot.unpin_chat_message(chat_id=admin, message_id=msg_id)
+        except Exception as e:
+            if "message to delete not found" in str(e):
+                continue
+            else:
+                continue
 
 
 
@@ -889,9 +896,9 @@ def handle_all_orders(message):
 
     user_id = message.chat.id
     if user_id in admin_ids:
-        columns, all_orders_data = oot.get_requests_all()
+        columns, all_orders_data = oot.get_requests_all_ordered()
     else:
-        columns, all_orders_data = oot.get_request_by_column("issuerID", user_id, "id", "model", "vin")
+        columns, all_orders_data = oot.get_request_by_column_ordered("issuerID", user_id, "id", "model", "vin")
     pg_nav.send_page(message.chat.id, page=1, data=all_orders_data, columns=columns, items_per_page=9, context="all_orders")
 
 

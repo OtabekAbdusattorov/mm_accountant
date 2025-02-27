@@ -95,6 +95,20 @@ def get_request_by_column(column, val, *args):
     return result
 
 
+def get_request_by_column_ordered(column, val, *args):
+    connection = sqlite3.connect(db)
+    cursor = connection.cursor()
+
+    columns = ", ".join(args) if args else "*"
+    query = f"SELECT r.{columns} FROM requests r JOIN orders o ON o.request_id = r.id WHERE {column} = ?"
+
+    cursor.execute(query, (val,))
+    result = cursor.fetchone()
+    connection.close()
+
+    return result
+
+
 def get_requests_all(vin=None):
     connection = sqlite3.connect(db)
     cursor = connection.cursor()
@@ -105,6 +119,23 @@ def get_requests_all(vin=None):
     else:
         cursor.execute(
             "SELECT * FROM requests WHERE vin = ?",
+            (vin,)
+        )
+    columns = [description[0] for description in cursor.description]
+    rows = cursor.fetchall()
+    return columns, rows
+
+
+def get_requests_all_ordered(vin=None):
+    connection = sqlite3.connect(db)
+    cursor = connection.cursor()
+    if vin is None:
+        cursor.execute(
+            "SELECT r.* FROM requests r JOIN orders o ON o.request_id = r.id"
+        )
+    else:
+        cursor.execute(
+            "SELECT r.* FROM requests r JOIN orders o ON o.request_id = r.id WHERE r.vin = ?",
             (vin,)
         )
     columns = [description[0] for description in cursor.description]
