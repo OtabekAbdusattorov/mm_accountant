@@ -254,8 +254,8 @@ def enter_dealer_phone(message):
             f"Model: <b>{model}</b>\n"
             f"Plate Number: <b>{plate_number}</b>\n"
             f"VIN: <b>{vin}</b>\n"
-            f"Last Price: <b>{last_price:,}</b>\n"
-            f"VAT: <b>{vat:,}</b>\n"
+            f"Last Price: <b>{last_price:,}₩</b>\n"
+            f"VAT: <b>{vat:,}₩</b>\n"
             f"Dealer phone number: <b>{phone_number}</b>\n\n"
             "Is everything correct?"
         )
@@ -348,8 +348,8 @@ def send_to_admins(username, model, vin, plate_number, last_price, vat, phone_nu
                 f"Model: <b>{model}</b>\n"
                 f"Plate Number: <b>{plate_number}</b>\n"
                 f"VIN: <b>{vin}</b>\n"
-                f"Last Price: <b>{last_price:,}</b>\n"
-                f"VAT: <b>{vat:,}</b>\n"
+                f"Last Price: <b>{last_price:,}₩</b>\n"
+                f"VAT: <b>{vat:,}₩</b>\n"
                 f"Dealer phone number: <b>{phone_number}</b>\n\n"
                 f"Request ID: {req_id}\n"
     )
@@ -689,7 +689,7 @@ def send_price(message, picture, vin):
             bot.send_message(
                 admin_id,
                 text=f"User ({username}) has confirmed the payment request for (VIN: {vin}). 💳\n\n"
-                     f"Price: {price:,}\n",
+                     f"Price: {price:,}₩\n",
                 reply_markup=inline_keyboard
             )
 
@@ -741,17 +741,21 @@ def handle_fee_input(message, fee_type, req_id, vin):
         return
     fee_amount = float(message.text)
 
+
+    currency = ""
     if fee_type == "korea":
         oot.update_orders(col_name="kfee", col_val=fee_amount, param="request_id", param_val=req_id)
+        currency = "₩"
     else:
         oot.update_orders(col_name="overseasfee", col_val=fee_amount, param="request_id", param_val=req_id)
+        currency = "$"
     # Notify admins about the fee update
     if user_id in admin_ids:
         for admin in admin_ids:
-            bot.send_message(admin, f"{fee_type.capitalize()} fee for VIN {vin} has been updated to {fee_amount:,}.")
+            bot.send_message(admin, f"{fee_type.capitalize()} fee for VIN {vin} has been updated to {fee_amount:,}{currency}")
     else:
         for admin in admin_ids+user_id:
-            bot.send_message(admin, f"{fee_type.capitalize()} fee for VIN {vin} has been updated to {fee_amount:,}.")
+            bot.send_message(admin, f"{fee_type.capitalize()} fee for VIN {vin} has been updated to {fee_amount:,}{currency}")
 
 
     user_id = oot.get_request_by_column("vin", vin, "issuerID")[0]
