@@ -887,27 +887,32 @@ def order_complete(call):
 
     req_id, issuerID = oot.get_request_by_column("vin", vin, "id", "issuerID")
 
-    status_order, adminID, messageID = oot.get_admin_by_column("requestID", req_id, "payment_status", "adminID", "messageID")
+    k_fee, overseas_fee = oot.get_orders_by_column("request_id", req_id, "kfee", "overseasfee")
 
-    if status_order != "Paid":
-
-        oot.update_orders(col_name='is_paid', col_val="Paid", param="request_id", param_val=req_id)
-        oot.update_admin(col_name='payment_status', col_val="Paid", param="requestID", param_val=req_id)
-        oot.update_admin(col_name='is_completed', col_val=1, param="requestID", param_val=req_id)
-
-        for admin_id in admin_ids:
-            msg_id = msg_ids.get(admin_id)
-            bot.send_message(admin_id, f"Payment process completed by {call.message.chat.first_name}. Request for (VIN: {vin}) is now closed!")
-            try:
-                bot.unpin_chat_message(admin_id, msg_id)
-            except Exception as e:
-                if "message to delete not found" in str(e):
-                    continue
-                else:
-                    continue
-
+    if k_fee is None or overseas_fee is None:
+        bot.send_message(call.message.chat.id, "Please enter both fees first!")
     else:
-        bot.send_message(call.message.chat.id, f"Request for (VIN: {vin}) is already closed and confirmed!")
+        status_order, adminID, messageID = oot.get_admin_by_column("requestID", req_id, "payment_status", "adminID", "messageID")
+
+        if status_order != "Paid":
+
+            oot.update_orders(col_name='is_paid', col_val="Paid", param="request_id", param_val=req_id)
+            oot.update_admin(col_name='payment_status', col_val="Paid", param="requestID", param_val=req_id)
+            oot.update_admin(col_name='is_completed', col_val=1, param="requestID", param_val=req_id)
+
+            for admin_id in admin_ids:
+                msg_id = msg_ids.get(admin_id)
+                bot.send_message(admin_id, f"Payment process completed by {call.message.chat.first_name}. Request for (VIN: {vin}) is now closed!")
+                try:
+                    bot.unpin_chat_message(admin_id, msg_id)
+                except Exception as e:
+                    if "message to delete not found" in str(e):
+                        continue
+                    else:
+                        continue
+
+        else:
+            bot.send_message(call.message.chat.id, f"Request for (VIN: {vin}) is already closed and confirmed!")
 
 
 
@@ -916,11 +921,30 @@ def handle_all_orders(message):
     state_manager.user_state(message, "all_orders")
 
     user_id = message.chat.id
+
     if user_id in admin_ids:
         columns, all_orders_data = oot.get_requests_all()
     else:
         columns, all_orders_data = oot.get_request_by_column_all("issuerID", user_id, "id", "model", "vin")
-    pg_nav.send_page(message.chat.id, page=1, data=all_orders_data, columns=columns, items_per_page=9, context="all_orders")
+
+    if not all_orders_data:
+        sent_msg = bot.send_message(user_id, "No orders found.")
+        user_last_message[user_id] = sent_msg.message_id
+        return
+
+    if user_id in user_last_message:
+        try:
+            bot.delete_message(user_id, user_last_message[user_id])
+        except Exception as e:
+            print("Error deleting previous all_orders message:", e)
+
+    sent_msg = pg_nav.send_page(user_id, page=1, data=all_orders_data, columns=columns, items_per_page=9, context="all_orders")
+
+    if sent_msg:
+        user_last_message[user_id] = sent_msg.message_id
+    else:
+        bot.send_message(user_id, "❌ Failed to display orders.")
+
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("all_orders_"))
@@ -1011,9 +1035,6 @@ def handle_edit_order(call):
 
     req_id = oot.get_request_by_column("vin", vin, "id")[0]
 
-    print("request id: ", req_id)
-    print("vin:", vin)
-
     editable_fields = [
         {'number': 1, 'display': 'Model name', 'column': 'model', 'table': 'requests', 'key_column': 'vin', 'key_value': vin, 'type': 'str'},
         {'number': 2, 'display': 'Plate number', 'column': 'platenumber', 'table': 'requests', 'key_column': 'vin', 'key_value': vin, 'type': 'str'},
@@ -1039,8 +1060,10 @@ def handle_edit_order(call):
     buttons.append(InlineKeyboardButton("❌ Cancel", callback_data=f"edit_cancel_{req_id}"))
     keyboard.add(*buttons)
 
-    bot.send_message(call.message.chat.id, message_text, reply_markup=keyboard)
+    sent_msg = bot.send_message(call.message.chat.id, message_text, reply_markup=keyboard)
     bot.answer_callback_query(call.id)
+
+    user_last_message[call.message.chat.id] = sent_msg.message_id
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("edit_field_"))
@@ -1048,6 +1071,8 @@ def handle_edit_field_selection(call):
     parts = call.data.split('_')
     field_number = int(parts[2])
     req_id = parts[4]
+
+    delete_last_message(call.message.chat.id)
 
     editable_fields = [
         {'number': 1, 'display': 'Model name', 'column': 'model', 'table': 'requests', 'key_column': 'id',
@@ -1073,7 +1098,6 @@ def handle_edit_field_selection(call):
     ]
 
     selected_field = next((f for f in editable_fields if f['number'] == field_number), None)
-    print(selected_field)
     if not selected_field:
         bot.answer_callback_query(call.id, "Invalid field selected.")
         return
@@ -1081,13 +1105,17 @@ def handle_edit_field_selection(call):
     user_edit_context[call.message.chat.id] = selected_field
     state_manager.user_state(call.message, f"awaiting_edit_{selected_field['column']}")
 
-    bot.send_message(call.message.chat.id, f"Enter new value for {selected_field['display']}:")
+    sent_msg = bot.send_message(call.message.chat.id, f"Enter new value for {selected_field['display']}:")
     bot.answer_callback_query(call.id)
+
+    user_last_message[call.message.chat.id] = sent_msg.message_id
 
 
 @bot.message_handler(func=lambda message: state_manager.get_state(message.chat.id).startswith("awaiting_edit_"))
 def handle_edit_value_input(message):
     user_id = message.chat.id
+
+    delete_last_message(message.chat.id)
 
     if user_id not in user_edit_context:
         bot.send_message(user_id, "Edit session expired. Please start over.")
@@ -1118,22 +1146,48 @@ def handle_edit_value_input(message):
     )
 
     if success:
-        bot.send_message(user_id, f"✅ {selected_field['display']} updated successfully!")
+        delete_last_message(user_id)
+        sent_msg = bot.send_message(user_id, f"✅ {selected_field['display']} updated successfully!")
+        req_id = selected_field['key_value']
+        trigger_view_all_orders(user_id, req_id)
     else:
-        bot.send_message(user_id, "❌ Failed to update. Please try again.")
+        sent_msg = bot.send_message(user_id, "❌ Failed to update. Please try again.")
 
     # Cleanup
+    user_last_message[message.chat.id] = sent_msg.message_id
+    bot.delete_message(message.chat.id, message.message_id)
+
     del user_edit_context[user_id]
     state_manager.user_state(message, None)
 
 
+def trigger_view_all_orders(user_id, req_id):
+    delete_last_message(user_id)
+    if user_id in user_last_message:
+        try:
+            bot.delete_message(user_id, user_last_message[user_id])
+        except Exception as e:
+            print(f"Error deleting previous order details message: {e}")
+
+    class FakeCall:
+        message = type("Message", (), {"chat": type("Chat", (), {"id": user_id})})
+        data = f"all_orders_{req_id}"
+
+    view_all_orders(FakeCall())
+
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith("edit_cancel_"))
 def handle_edit_cancel(call):
+    delete_last_message(call.message.chat.id)
+
     user_id = call.message.chat.id
     if user_id in user_edit_context:
         del user_edit_context[user_id]
     state_manager.user_state(call.message, None)
-    bot.send_message(user_id, "Edit cancelled.")
+    sent_msg = bot.send_message(user_id, "Edit cancelled.")
+
+    user_last_message[call.message.chat.id] = sent_msg.message_id
+
     bot.answer_callback_query(call.id)
 
 

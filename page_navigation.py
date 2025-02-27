@@ -66,27 +66,30 @@ def send_page(chat_id, page, data, columns, items_per_page, context, message_id=
 
     if message_id:
         try:
-            bot.edit_message_text(
+            sent_msg = bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=message_id,
                 text=f"Page {page} of {((len(data) - 1) // items_per_page) + 1}\n\n{result_message}",
                 reply_markup=keyboard,
                 parse_mode="HTML"
             )
+            return sent_msg
         except telebot.apihelper.ApiTelegramException:
-            bot.send_message(
+            sent_msg = bot.send_message(
                 chat_id,
                 text=f"Page {page} of {((len(data) - 1) // items_per_page) + 1}\n\n{result_message}",
                 reply_markup=keyboard,
                 parse_mode="HTML"
             )
+            return sent_msg
     else:
-        bot.send_message(
+        sent_msg = bot.send_message(
             chat_id,
             text=f"Page {page} of {((len(data) - 1) // items_per_page) + 1}\n\n{result_message}",
             reply_markup=keyboard,
             parse_mode="HTML"
         )
+        return sent_msg
 
 
 def format_data(columns, rows, context):
