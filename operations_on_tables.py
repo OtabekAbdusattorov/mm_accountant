@@ -277,3 +277,17 @@ def get_balance(user_id=None):
     connection.close()
 
     return result  # Will return a tuple for one user or a list of tuples for all users
+
+
+def update_table(table, column, new_value, key_column, key_value):
+    conn = sqlite3.connect(db)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(f"UPDATE {table} SET {column} = ? WHERE {key_column} = ?", (new_value, key_value))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Database error: {e}")
+        return False
+    finally:
+        conn.close()

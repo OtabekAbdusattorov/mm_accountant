@@ -6,6 +6,8 @@ from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 load_dotenv()
 bot_token = os.getenv("BOT_TOKEN")
+admin_ids_str  = os.getenv("ADMIN_IDS")
+admin_ids = [int(ID.strip()) for ID in admin_ids_str.split(',')]
 
 logger = logging.getLogger(__name__)
 bot = telebot.TeleBot(bot_token)
@@ -108,7 +110,7 @@ def format_data(columns, rows, context):
     return result_message
 
 
-def format_results(columns, rows, context):
+def format_results(columns, rows, context, user_id):
     result_message = ""
     inline_keyboard = InlineKeyboardMarkup(row_width=3)
     key_count = 0
@@ -150,7 +152,7 @@ def format_results(columns, rows, context):
                 elif col_name.lower() == "id":
                     req_id = value
             result_message += f"Model name: \t<b>{model_name}</b>\n"
-            result_message += f"Plate Number: \t<b>{plate_number}</b>\n"
+            result_message += f"Plate number: \t<b>{plate_number}</b>\n"
             result_message += f"VIN: \t<b>{vin}</b>\n"
             result_message += f"Last price: \t<b>{price:,}₩</b>\n"
             result_message += f"VAT: \t<b>{vat:,}₩</b>\n"
@@ -169,6 +171,9 @@ def format_results(columns, rows, context):
             payment_show = InlineKeyboardButton("🧾 Payment receipt", callback_data=f"payment_show_{vin}")
             if paid is not None:
                 inline_keyboard.add(payment_show)
+            if user_id in admin_ids:
+                edit_button = InlineKeyboardButton("Edit", callback_data=f"edit_orders_{vin}")
+                inline_keyboard.add(edit_button)
 
             return result_message, inline_keyboard
 

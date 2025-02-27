@@ -516,7 +516,7 @@ def process_cancellation_reason(msg, issuer_id, vin, username):
 def send_request_info(chat_id, vin):
     columns, req_one_data = oot.get_requests_all(vin)
 
-    full_req_one_info, inline_keyboard = pg_nav.format_results(columns, req_one_data, context="requests_edit")
+    full_req_one_info, inline_keyboard = pg_nav.format_results(columns, req_one_data, context="requests_edit", user_id=chat_id)
 
     bot.send_message(
         chat_id=chat_id,
@@ -742,14 +742,12 @@ def handle_fee_input(message, fee_type, req_id, vin):
     fee_amount = float(message.text)
 
 
-    currency = ""
     if fee_type == "korea":
         oot.update_orders(col_name="kfee", col_val=fee_amount, param="request_id", param_val=req_id)
         currency = "₩"
     else:
         oot.update_orders(col_name="overseasfee", col_val=fee_amount, param="request_id", param_val=req_id)
         currency = "$"
-    # Notify admins about the fee update
     if user_id in admin_ids:
         for admin in admin_ids:
             bot.send_message(admin, f"{fee_type.capitalize()} fee for VIN {vin} has been updated to {fee_amount:,}{currency}")
@@ -931,7 +929,7 @@ def view_all_orders(call):
 
     columns, request_data = oot.all_orders_info(req_id)
 
-    full_request_info, inline_keyboard = pg_nav.format_results(columns, request_data, "all_orders")
+    full_request_info, inline_keyboard = pg_nav.format_results(columns, request_data, "all_orders", call.message.chat.id)
 
     bot.send_message(
         chat_id=call.message.chat.id,
@@ -1003,6 +1001,141 @@ def handle_balance(message):
                 bot.send_message(user_id, "Your balance is not set.")
         else:
             bot.send_message(user_id, "You don't have a balance record.")
+
+
+user_edit_context = {}
+@bot.callback_query_handler(func=lambda call: call.data.startswith("edit_orders_"))
+def handle_edit_order(call):
+    parts = call.data.split('_')
+    vin = parts[2]
+
+    req_id = oot.get_request_by_column("vin", vin, "id")[0]
+
+    print("request id: ", req_id)
+    print("vin:", vin)
+
+    editable_fields = [
+        {'number': 1, 'display': 'Model name', 'column': 'model', 'table': 'requests', 'key_column': 'vin', 'key_value': vin, 'type': 'str'},
+        {'number': 2, 'display': 'Plate number', 'column': 'platenumber', 'table': 'requests', 'key_column': 'vin', 'key_value': vin, 'type': 'str'},
+        {'number': 3, 'display': 'VIN', 'column': 'vin', 'table': 'cars', 'key_column': 'requests', 'key_value': vin, 'type': 'str'},
+        {'number': 4, 'display': 'Last price', 'column': 'last_price', 'table': 'requests', 'key_column': 'id', 'key_value': req_id, 'type': 'int'},
+        {'number': 5, 'display': 'VAT', 'column': 'vat', 'table': 'requests', 'key_column': 'request_id', 'key_value': req_id, 'type': 'int'},
+        {'number': 6, 'display': 'Paid price', 'column': 'paidprice', 'table': 'requests', 'key_column': 'request_id', 'key_value': req_id, 'type': 'int'},
+        {'number': 7, 'display': 'Exchange rate', 'column': 'rate', 'table': 'orders', 'key_column': 'request_id', 'key_value': req_id, 'type': 'float'},
+        {'number': 8, 'display': 'Fees in Korea', 'column': 'kfee', 'table': 'orders', 'key_column': 'request_id', 'key_value': req_id, 'type': 'int'},
+        {'number': 9, 'display': 'Overseas fee', 'column': 'overseasfee', 'table': 'orders', 'key_column': 'request_id', 'key_value': req_id, 'type': 'int'},
+        {'number': 10, 'display': 'Dealer phone number', 'column': 'phoneNumber', 'table': 'requests', 'key_column': 'id', 'key_value': req_id, 'type': 'int'}
+    ]
+
+    message_text = "Select the field to edit:\n"
+    for field in editable_fields:
+        message_text += f"{field['number']}. {field['display']}\n"
+    message_text += "\nPress the corresponding number:"
+
+    keyboard = InlineKeyboardMarkup(row_width=3)
+    buttons = []
+    for field in editable_fields:
+        buttons.append(InlineKeyboardButton(str(field['number']), callback_data=f"edit_field_{field['number']}_{vin}_{req_id}"))
+    buttons.append(InlineKeyboardButton("❌ Cancel", callback_data=f"edit_cancel_{req_id}"))
+    keyboard.add(*buttons)
+
+    bot.send_message(call.message.chat.id, message_text, reply_markup=keyboard)
+    bot.answer_callback_query(call.id)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("edit_field_"))
+def handle_edit_field_selection(call):
+    parts = call.data.split('_')
+    field_number = int(parts[2])
+    req_id = parts[4]
+
+    editable_fields = [
+        {'number': 1, 'display': 'Model name', 'column': 'model', 'table': 'requests', 'key_column': 'id',
+         'key_value': req_id, 'type': 'str'},
+        {'number': 2, 'display': 'Plate number', 'column': 'plateNumber', 'table': 'requests', 'key_column': 'id',
+         'key_value': req_id, 'type': 'str'},
+        {'number': 3, 'display': 'VIN', 'column': 'vin', 'table': 'requests', 'key_column': 'id', 'key_value': req_id,
+         'type': 'str'},
+        {'number': 4, 'display': 'Last price', 'column': 'last_price', 'table': 'requests', 'key_column': 'id',
+         'key_value': req_id, 'type': 'int'},
+        {'number': 5, 'display': 'VAT', 'column': 'vat', 'table': 'requests', 'key_column': 'id',
+         'key_value': req_id, 'type': 'int'},
+        {'number': 6, 'display': 'Paid price', 'column': 'paidprice', 'table': 'requests', 'key_column': 'id ',
+         'key_value': req_id, 'type': 'int'},
+        {'number': 7, 'display': 'Exchange rate', 'column': 'rate', 'table': 'orders', 'key_column': 'request_id',
+         'key_value': req_id, 'type': 'float'},
+        {'number': 8, 'display': 'Fees in Korea', 'column': 'kfee', 'table': 'orders', 'key_column': 'request_id',
+         'key_value': req_id, 'type': 'int'},
+        {'number': 9, 'display': 'Overseas fee', 'column': 'overseasfee', 'table': 'orders', 'key_column': 'request_id',
+         'key_value': req_id, 'type': 'int'},
+        {'number': 10, 'display': 'Dealer phone number', 'column': 'phoneNumber', 'table': 'requests',
+         'key_column': 'id', 'key_value': req_id, 'type': 'str'}
+    ]
+
+    selected_field = next((f for f in editable_fields if f['number'] == field_number), None)
+    print(selected_field)
+    if not selected_field:
+        bot.answer_callback_query(call.id, "Invalid field selected.")
+        return
+
+    user_edit_context[call.message.chat.id] = selected_field
+    state_manager.user_state(call.message, f"awaiting_edit_{selected_field['column']}")
+
+    bot.send_message(call.message.chat.id, f"Enter new value for {selected_field['display']}:")
+    bot.answer_callback_query(call.id)
+
+
+@bot.message_handler(func=lambda message: state_manager.get_state(message.chat.id).startswith("awaiting_edit_"))
+def handle_edit_value_input(message):
+    user_id = message.chat.id
+
+    if user_id not in user_edit_context:
+        bot.send_message(user_id, "Edit session expired. Please start over.")
+        state_manager.user_state(message, None)
+        return
+
+    selected_field = user_edit_context[user_id]
+    new_value = message.text.strip()
+
+    # Validate input based on type
+    try:
+        if selected_field['type'] == 'int':
+            new_value = int(new_value)
+        elif selected_field['type'] == 'float':
+            new_value = float(new_value)
+        # Add other types if needed
+    except ValueError:
+        bot.send_message(user_id, "Invalid format. Please enter a valid number.")
+        return
+
+    # Update database
+    success = oot.update_table(
+        selected_field['table'],
+        selected_field['column'],
+        new_value,
+        selected_field['key_column'],
+        selected_field['key_value']
+    )
+
+    if success:
+        bot.send_message(user_id, f"✅ {selected_field['display']} updated successfully!")
+    else:
+        bot.send_message(user_id, "❌ Failed to update. Please try again.")
+
+    # Cleanup
+    del user_edit_context[user_id]
+    state_manager.user_state(message, None)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("edit_cancel_"))
+def handle_edit_cancel(call):
+    user_id = call.message.chat.id
+    if user_id in user_edit_context:
+        del user_edit_context[user_id]
+    state_manager.user_state(call.message, None)
+    bot.send_message(user_id, "Edit cancelled.")
+    bot.answer_callback_query(call.id)
+
 
 
 if __name__ == '__main__':
