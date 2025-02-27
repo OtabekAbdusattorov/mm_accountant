@@ -892,7 +892,7 @@ def handle_all_orders(message):
     if user_id in admin_ids:
         columns, all_orders_data = oot.get_requests_all()
     else:
-        columns, all_orders_data = oot.get_request_by_column("issuerID", user_id, "id", "model", "vin")
+        columns, all_orders_data = oot.get_request_by_column_all("issuerID", user_id, "id", "model", "vin")
     pg_nav.send_page(message.chat.id, page=1, data=all_orders_data, columns=columns, items_per_page=9, context="all_orders")
 
 

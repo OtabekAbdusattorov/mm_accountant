@@ -1,5 +1,7 @@
 import sqlite3
 
+from docutils.nodes import description
+
 db = 'account'
 
 
@@ -81,7 +83,7 @@ def update_orders(col_name, col_val, param, param_val):
 
 
 
-def get_request_by_column(column, val, *args):
+def  get_request_by_column(column, val, *args):
     connection = sqlite3.connect(db)
     cursor = connection.cursor()
 
@@ -124,6 +126,20 @@ def get_requests_all(vin=None):
     columns = [description[0] for description in cursor.description]
     rows = cursor.fetchall()
     return columns, rows
+
+
+def  get_request_by_column_all(column, val, *args):
+    connection = sqlite3.connect(db)
+    cursor = connection.cursor()
+
+    columns = ", ".join(args) if args else "*"
+    query = f"SELECT {columns} FROM requests WHERE {column} = ?"
+
+    cursor.execute(query, (val,))
+    columns_name = [description[0] for description in cursor.description]
+
+    result = cursor.fetchall()
+    return columns_name, result
 
 
 def get_requests_all_ordered(vin=None):
