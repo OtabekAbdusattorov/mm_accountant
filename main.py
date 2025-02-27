@@ -664,13 +664,13 @@ def handle_fee_input(message, fee_type, req_id, vin):
     else:
         oot.update_orders(col_name="overseasfee", col_val=fee_amount, param="request_id", param_val=req_id)
 
-    # Send confirmation message to the user
-    bot.send_message(user_id, f"The {fee_type.capitalize()} fee for VIN {vin} has been updated to {fee_amount}.")
-
     # Notify admins about the fee update
-    for admin in admin_ids:
-        bot.send_message(admin, f"{fee_type.capitalize()} fee for VIN {vin} has been updated to {fee_amount}.")
-
+    if user_id in admin_ids:
+        for admin in admin_ids:
+            bot.send_message(admin, f"{fee_type.capitalize()} fee for VIN {vin} has been updated to {fee_amount}.")
+    else:
+        for admin in admin_ids+user_id:
+            bot.send_message(admin, f"{fee_type.capitalize()} fee for VIN {vin} has been updated to {fee_amount}.")
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("payment_user"))
@@ -834,27 +834,20 @@ def process_exchange_rate(message, req_id, user_id, price, vin):
         rate_price = float(price / rate)
 
         oot.update_orders(col_name="rate", col_val=rate, param="request_id", param_val=req_id)
-
-        bot.send_message(
-            user_id,
-            f"From <b>{message.chat.first_name}</b>\n\n✅ Exchange rate set to: {rate} 💰\n\nfor VIN: `{vin}`\n\nPrice: {price} / {rate}= {rate_price:.2f}"
-            , parse_mode="HTML"
-        )
-
-        for admin in admin_ids:
-            bot.send_message(
-                admin,
-                f"From <b>{message.chat.first_name}</b>\n\n✅ Exchange rate set to: {rate} 💰\n\nfor VIN: `{vin}`\n\nPrice: {price} / {rate}= {rate_price:.2f}"
-                , parse_mode="HTML"
-            )
-        for i in range(message.message_id-2, message.message_id):
-            try:
-                bot.delete_message(message.chat.id, message.message_id)
-            except Exception as e:
-                if "message to delete not found" in str(e):
-                    continue
-            else:
-                    continue
+        if user_id in admin_ids:
+            for admin in admin_ids:
+                bot.send_message(
+                    admin,
+                    f"From <b>{message.chat.first_name}</b>\n\n✅ Exchange rate set to: {rate} 💰\n\nfor VIN: `{vin}`\n\nPrice: {price} / {rate}= {rate_price:.2f}"
+                    , parse_mode="HTML"
+                )
+        else:
+            for admin in admin_ids+user_id:
+                bot.send_message(
+                    admin,
+                    f"From <b>{message.chat.first_name}</b>\n\n✅ Exchange rate set to: {rate} 💰\n\nfor VIN: `{vin}`\n\nPrice: {price} / {rate}= {rate_price:.2f}"
+                    , parse_mode="HTML"
+                )
 
     except ValueError:
         bot.send_message(message.chat.id, "❌ Invalid input. Please enter a valid number.")
@@ -942,7 +935,6 @@ def retrieve_payment(call):
             bot.send_message(call.message.chat.id, f"Receipt for VIN: {vin}.")
     else:
         bot.send_message(call.message.chat.id, "❌ No receipt found for this VIN.")
-
 
 
 if __name__ == '__main__':

@@ -1,5 +1,4 @@
 import sqlite3
-from main import admin_ids
 
 db = 'account'
 
