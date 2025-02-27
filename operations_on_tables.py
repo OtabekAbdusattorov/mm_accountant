@@ -1,7 +1,5 @@
 import sqlite3
 
-from docutils.nodes import description
-
 db = 'account'
 
 
@@ -68,6 +66,20 @@ def get_orders(request_id):
     return result
 
 
+def get_orders_by_column(column, val, *args):
+    connection = sqlite3.connect(db)
+    cursor = connection.cursor()
+
+    columns = ", ".join(args) if args else "*"
+    query = f"SELECT {columns} FROM orders WHERE {column} = ?"
+
+    cursor.execute(query, (val,))
+    result = cursor.fetchone()
+    connection.close()
+
+    return result
+
+
 def update_orders(col_name, col_val, param, param_val):
     connection = sqlite3.connect(db)
     try:
@@ -83,7 +95,7 @@ def update_orders(col_name, col_val, param, param_val):
 
 
 
-def  get_request_by_column(column, val, *args):
+def get_request_by_column(column, val, *args):
     connection = sqlite3.connect(db)
     cursor = connection.cursor()
 
@@ -235,3 +247,33 @@ def status_query(req_id):
     connection.close()
 
     return columns, result
+
+
+def update_balance(price, user_id):
+    connection = sqlite3.connect(db)
+    cursor = connection.cursor()
+    cursor.execute(
+        f"UPDATE userStates SET balance = ? WHERE user_id = ?", (price, user_id)
+    )
+    connection.commit()
+    connection.close()
+
+
+def get_balance(user_id=None):
+    connection = sqlite3.connect(db)
+    cursor = connection.cursor()
+
+    if user_id is None:
+        # Fetch all balances if user_id is None (admin mode)
+        query = "SELECT balance, user_id FROM userStates"
+        cursor.execute(query)
+        result = cursor.fetchall()  # Fetch all rows as a list of tuples
+    else:
+        # Fetch the balance for a specific user
+        query = "SELECT balance, user_id FROM userStates WHERE user_id = ?"
+        cursor.execute(query, (user_id,))
+        result = cursor.fetchone()  # Fetch one record (tuple) for the specific user
+
+    connection.close()
+
+    return result  # Will return a tuple for one user or a list of tuples for all users

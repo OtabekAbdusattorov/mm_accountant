@@ -254,8 +254,8 @@ def enter_dealer_phone(message):
             f"Model: <b>{model}</b>\n"
             f"Plate Number: <b>{plate_number}</b>\n"
             f"VIN: <b>{vin}</b>\n"
-            f"Last Price: <b>{last_price}</b>\n"
-            f"VAT: <b>{vat}</b>\n"
+            f"Last Price: <b>{last_price:,}</b>\n"
+            f"VAT: <b>{vat:,}</b>\n"
             f"Dealer phone number: <b>{phone_number}</b>\n\n"
             "Is everything correct?"
         )
@@ -348,8 +348,8 @@ def send_to_admins(username, model, vin, plate_number, last_price, vat, phone_nu
                 f"Model: <b>{model}</b>\n"
                 f"Plate Number: <b>{plate_number}</b>\n"
                 f"VIN: <b>{vin}</b>\n"
-                f"Last Price: <b>{last_price}</b>\n"
-                f"VAT: <b>{vat}</b>\n"
+                f"Last Price: <b>{last_price:,}</b>\n"
+                f"VAT: <b>{vat:,}</b>\n"
                 f"Dealer phone number: <b>{phone_number}</b>\n\n"
                 f"Request ID: {req_id}\n"
     )
@@ -390,9 +390,7 @@ def confirm_request(call, vin, req_id, issuer_id):
 
     # Send payment button
     inline_keyboard = InlineKeyboardMarkup().add(
-        InlineKeyboardButton("Payment 💳️", callback_data=f"payment_user_{vin}"),
-            InlineKeyboardButton("Fees in Korea 🇰🇷", callback_data=f"fees_korea_{vin}"),
-            InlineKeyboardButton("Overseas Fee 🌍", callback_data=f"fees_overseas_{vin}")
+        InlineKeyboardButton("Payment 💳️", callback_data=f"payment_user_{vin}")
     )
     bot.send_message(issuer_id,
                      text=f"This request (VIN: {vin}) has been confirmed, and ready for payment. 💳 Payment status:\n⏳ PENDING...",
@@ -622,57 +620,6 @@ def edit_value_handler(message, column, req_id):
                     continue
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("fees_"))
-def fees(call):
-    """Handles fees input for Korea or Overseas."""
-
-    user_id = call.message.chat.id
-    type_fee = call.data.split("_")[-2]  # 'korea' or 'overseas'
-    vin = call.data.split("_")[-1]
-
-    # Get request ID
-    req_id = oot.get_request_by_column("vin", vin, "id")
-
-    if not req_id:
-        bot.send_message(user_id, "Request not found.")
-        return
-
-    req_id = req_id[0]
-
-    if type_fee == "korea":
-        currency = "₩"
-    else:
-        currency = "$"
-
-    bot.send_message(user_id, f"Please enter the {type_fee.capitalize()} fee in {currency} for VIN: {vin} in numbers.")
-    bot.register_next_step_handler(call.message, handle_fee_input, type_fee, req_id, vin)
-
-
-def handle_fee_input(message, fee_type, req_id, vin):
-    user_id = message.chat.id
-
-    # Validate that the input is a number
-    if not message.text.isdigit():
-        bot.send_message(user_id, "Invalid input. Please enter a valid numeric amount.")
-        return
-
-    fee_amount = int(message.text)
-
-    # Update the fee in the database based on the fee type (Korea or Overseas)
-    if fee_type == "korea":
-        oot.update_orders(col_name="kfee", col_val=fee_amount, param="request_id", param_val=req_id)
-    else:
-        oot.update_orders(col_name="overseasfee", col_val=fee_amount, param="request_id", param_val=req_id)
-
-    # Notify admins about the fee update
-    if user_id in admin_ids:
-        for admin in admin_ids:
-            bot.send_message(admin, f"{fee_type.capitalize()} fee for VIN {vin} has been updated to {fee_amount}.")
-    else:
-        for admin in admin_ids+user_id:
-            bot.send_message(admin, f"{fee_type.capitalize()} fee for VIN {vin} has been updated to {fee_amount}.")
-
-
 @bot.callback_query_handler(func=lambda call: call.data.startswith("payment_user"))
 def payment_user(call):
     vin = call.data.split("_")[-1]
@@ -701,7 +648,7 @@ def ask_for_price(message, vin):
         bot.register_next_step_handler(message, send_price, picture, vin)
     else:
         bot.send_message(message.chat.id, "❌ Please send a valid picture.")
-        bot.register_next_step_handler(message, ask_for_price)
+        bot.register_next_step_handler(message, ask_for_price, vin)
 
 
 def send_price(message, picture, vin):
@@ -709,6 +656,21 @@ def send_price(message, picture, vin):
         price = float(message.text)
 
         oot.update_request(col_name="paidprice", col_val=price, param="vin", param_val=vin)
+
+        user_id, last_price = oot.get_request_by_column("vin", vin, "issuerID", "last_price")
+
+        balance = price - last_price
+
+
+        last_balance_result = oot.get_balance(message.chat.id)
+        if last_balance_result[0] is None:
+            oot.update_balance(balance, user_id)
+        else:
+            last_balance, issuer_id = last_balance_result
+            balance = last_balance + price - last_price
+            oot.update_balance(balance, user_id)
+
+
 
         inline_keyboard = InlineKeyboardMarkup(row_width=2)
         exchange_rate_button = InlineKeyboardButton("Exchange rate 💰", callback_data=f"exchange_rate_{vin}")
@@ -727,7 +689,7 @@ def send_price(message, picture, vin):
             bot.send_message(
                 admin_id,
                 text=f"User ({username}) has confirmed the payment request for (VIN: {vin}). 💳\n\n"
-                     f"Price: {price}\n",
+                     f"Price: {price:,}\n",
                 reply_markup=inline_keyboard
             )
 
@@ -744,6 +706,69 @@ def send_price(message, picture, vin):
         bot.register_next_step_handler(message, send_price, picture)
 
 
+@bot.callback_query_handler(func=lambda call: call.data.startswith("fees_"))
+def fees(call):
+    """Handles fees input for Korea or Overseas."""
+    vin = call.data.split("_")[-1]
+    req_id = oot.get_request_by_column("vin", vin, "id")[0]
+    result_rate = oot.get_orders_by_column("request_id", req_id, "rate")[0]
+
+    if result_rate is None:
+        bot.send_message(call.message.chat.id, "Please set the exchange rate first!")
+    else:
+        user_id = call.message.chat.id
+        type_fee = call.data.split("_")[-2]  # 'korea' or 'overseas'
+
+        if not req_id:
+            bot.send_message(user_id, "Request not found.")
+            return
+
+        if type_fee == "korea":
+            currency = "₩"
+        else:
+            currency = "$"
+
+        bot.send_message(user_id, f"Please enter the {type_fee.capitalize()} fee in {currency} for VIN: {vin} in numbers.")
+        bot.register_next_step_handler(call.message, handle_fee_input, type_fee, req_id, vin)
+
+
+
+def handle_fee_input(message, fee_type, req_id, vin):
+    user_id = message.chat.id
+
+    if not message.text.isdigit():
+        bot.send_message(user_id, "Invalid input. Please enter a valid numeric amount.")
+        return
+    fee_amount = float(message.text)
+
+    if fee_type == "korea":
+        oot.update_orders(col_name="kfee", col_val=fee_amount, param="request_id", param_val=req_id)
+    else:
+        oot.update_orders(col_name="overseasfee", col_val=fee_amount, param="request_id", param_val=req_id)
+    # Notify admins about the fee update
+    if user_id in admin_ids:
+        for admin in admin_ids:
+            bot.send_message(admin, f"{fee_type.capitalize()} fee for VIN {vin} has been updated to {fee_amount:,}.")
+    else:
+        for admin in admin_ids+user_id:
+            bot.send_message(admin, f"{fee_type.capitalize()} fee for VIN {vin} has been updated to {fee_amount:,}.")
+
+
+    user_id = oot.get_request_by_column("vin", vin, "issuerID")[0]
+    balance, not_used = oot.get_balance(user_id)
+    if fee_type == "korea":
+        after_fee_balance = balance - fee_amount
+
+    else:
+        rate = oot.get_orders_by_column("request_id", req_id, "rate")[0]
+        rate_price = fee_amount * rate
+
+        after_fee_balance = balance - rate_price
+
+    oot.update_balance(after_fee_balance, user_id)
+
+
+
 user_images = {}
 message_sent_flags = {}
 
@@ -754,7 +779,7 @@ def upload_doc(call):
     result = oot.get_request_by_column("vin", vin, "documents")
 
     if result[0] == 0:
-        sent_msg = bot.send_message(call.message.chat.id, "Please upload document images. Up to 5 images.")
+        sent_msg = bot.send_message(call.message.chat.id, "Please upload document images...")
         user_last_message[call.message.chat.id] = sent_msg.message_id
         state_manager.user_state(call.message, f"awaiting_images_{vin}")
     else:
@@ -780,8 +805,8 @@ def handle_uploaded_images(message):
         threading.Timer(2.0, send_upload_message, args=[user_id]).start()
         message_sent_flags[user_id] = True
 
-    # Instead of waiting for 5 images, zip all when the user sends the "/done" command
-    if len(user_images[user_id]["images"]) >= 5:
+    # Instead of waiting for 100 images, zip all when the user sends the "/done" command
+    if len(user_images[user_id]["images"]) >= 1000:
         bot.send_message(user_id, "Creating your ZIP file now...")
         zip_path = md.create_zip_and_save(user_images, user_id, vin)
         if zip_path:
@@ -838,14 +863,14 @@ def process_exchange_rate(message, req_id, user_id, price, vin):
             for admin in admin_ids:
                 bot.send_message(
                     admin,
-                    f"From <b>{message.chat.first_name}</b>\n\n✅ Exchange rate set to: {rate} 💰\n\nfor VIN: `{vin}`\n\nPrice: {price} / {rate}= {rate_price:.2f}"
+                    f"From <b>{message.chat.first_name}</b>\n\n✅ Exchange rate set to: {rate:,} 💰\n\nfor VIN: `{vin}`\n\nPrice: {price} / {rate}= {rate_price:,.2f}"
                     , parse_mode="HTML"
                 )
         else:
             for admin in admin_ids+user_id:
                 bot.send_message(
                     admin,
-                    f"From <b>{message.chat.first_name}</b>\n\n✅ Exchange rate set to: {rate} 💰\n\nfor VIN: `{vin}`\n\nPrice: {price} / {rate}= {rate_price:.2f}"
+                    f"From <b>{message.chat.first_name}</b>\n\n✅ Exchange rate set to: {rate:,} 💰\n\nfor VIN: `{vin}`\n\nPrice: {price} / {rate}= {rate_price:,.2f}"
                     , parse_mode="HTML"
                 )
 
@@ -936,6 +961,44 @@ def retrieve_payment(call):
             bot.send_message(call.message.chat.id, f"Receipt for VIN: {vin}.")
     else:
         bot.send_message(call.message.chat.id, "❌ No receipt found for this VIN.")
+
+
+@bot.message_handler(commands=['balance'])
+def handle_balance(message):
+    user_id = message.chat.id
+
+    # Check if user is an admin
+    if user_id in admin_ids:
+        # Fetch all users' balances
+        results = oot.get_balance()  # No user_id means fetch all
+
+        if results:
+            balances_text = ""
+            for result in results:
+                balance, issuer_id = result
+                if balance is not None:  # Skip entries with None as balance
+                    username = oot.get_request_by_column("issuerID", issuer_id, "username")[0]
+                    balances_text += f"Username: {username}\nBalance: {balance:,}\n\n"
+
+            if balances_text:
+                bot.send_message(user_id, f"All Users' Balances:\n\n{balances_text}")
+            else:
+                bot.send_message(user_id, "No balances available for users.")
+        else:
+            bot.send_message(user_id, "No balances found.")
+
+    else:
+        # Fetch only the balance for this user
+        result = oot.get_balance(user_id)
+        if result:
+            balance, user_id = result
+            if balance is not None:
+                username = oot.get_request_by_column("issuerID", user_id, "username")[0]
+                bot.send_message(user_id, f"Username: {username}\nBalance: {balance}")
+            else:
+                bot.send_message(user_id, "Your balance is not set.")
+        else:
+            bot.send_message(user_id, "You don't have a balance record.")
 
 
 if __name__ == '__main__':
