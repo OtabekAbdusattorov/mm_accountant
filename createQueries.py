@@ -26,9 +26,12 @@ def create_table():
             model TEXT,
             vin TEXT,
             plateNumber TEXT,
-            last_price REAL,
-            paidprice REAL,
-            vat REAL,
+            last_price INTEGER,
+            paidprice INTEGER,
+            paid_type TEXT,
+            vat INTEGER,
+            percentage INTEGER,
+            vat_percentage INTEGER,
             phoneNumber TEXT,
             issuerID INTEGER,
             username TEXT,
@@ -50,8 +53,8 @@ def create_table():
                 adminID INTEGER,
                 date TEXT,
                 rate INTEGER,
-                kfee REAL,
-                overseasfee REAL,
+                kfee INTEGER,
+                overseasfee INTEGER,
                 FOREIGN KEY (request_id) REFERENCES requests(id)
         )
         """)
@@ -81,8 +84,8 @@ def create_table():
                 model TEXT,
                 vin TEXT UNIQUE,
                 plate_number TEXT UNIQUE,
-                last_price REAL,
-                vat REAL,
+                last_price INTEGER,
+                vat_value INTEGER,
                 phoneNumber TEXT
         )
         """)

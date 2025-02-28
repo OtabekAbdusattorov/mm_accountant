@@ -184,7 +184,8 @@ def format_results(columns, rows, context, user_id):
         for index, row in enumerate(rows, start=1):
             data_dict = dict(zip(columns, row))
 
-            editable_keys = [key for key in data_dict.keys() if key.lower() not in ['username', 'id', 'issuerid', 'status', 'date', 'messageid', 'paidprice', 'documents']]
+            editable_keys = [key for key in data_dict.keys() if key.lower() not in
+                             ['username', 'id', 'issuerid', 'status', 'date', 'messageid', 'paidprice', 'documents', 'paid_type', 'percentage', 'vat_percentage']]
             key_count = len(editable_keys)
 
             result_message += f"<b>{index}.</b> Model: <b>{data_dict['model']}</b>\n"

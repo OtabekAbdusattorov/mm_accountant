@@ -47,11 +47,14 @@ class UserStateManager:
         connection = self.connect()
         now_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with connection:
-            connection.execute("""
+            cursor = connection.cursor()
+            cursor.execute("""
                 UPDATE userStates 
                 SET state = ?, date = ? 
                 WHERE user_id = ?
             """, (user_state, now_time, user_id))
+            connection.commit()
+        connection.close()
 
     def user_state(self, message, new_state):
         """Update or insert a user state based on their last known state."""
@@ -59,7 +62,7 @@ class UserStateManager:
         self.user_states[message.chat.id] = new_state
 
         current_state = self.get_state(user_id)
-        if not current_state:
-            self.insert_state(user_id, new_state)
-        else:
+        if current_state:
             self.update_state(user_id, new_state)
+        else:
+            self.insert_state(user_id, new_state)
