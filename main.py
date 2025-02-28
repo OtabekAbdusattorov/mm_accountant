@@ -388,8 +388,7 @@ def handle_confirmation(call):
             model, vin, plate_number, last_price, vat, phone_number = car_info
             username = call.message.chat.first_name
 
-            vat_price = int(vat)
-            vat_perc = vat_price / 11
+            vat_perc = vat / 11
 
             vat_value = math.floor(vat_perc + 0.5)
 
@@ -397,9 +396,9 @@ def handle_confirmation(call):
             connection = sqlite3.connect(db)
             with connection:
                 connection.execute("""
-                    INSERT INTO requests (model, vin, platenumber, last_price, vat, issuerID, username, messageID, date, phoneNumber, status)
+                    INSERT INTO requests (model, vin, platenumber, last_price, vat_value, vat, issuerID, username, messageID, date, phoneNumber, status)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (model, vin, plate_number, last_price, vat_value, user_id, username, call.message.message_id, now_time, phone_number, "Confirmed"))
+                """, (model, vin, plate_number, last_price, vat_value, vat, user_id, username, call.message.message_id, now_time, phone_number, "Confirmed"))
             connection.close()
 
             # Clear the temp table for the user after insertion
