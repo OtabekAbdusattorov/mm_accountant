@@ -3,12 +3,12 @@ import sqlite3
 db = 'account'
 
 
-def insert_admin(admin_id, request_id, status_req, payment_status, message_id, date):
+def insert_admin(admin_id, request_id, status_req, payment_status, message_id, date, vat_percentage):
     connection = sqlite3.connect(db)
     with connection:
         connection.execute(
-            "INSERT INTO admins (adminID, requestID, status_req, payment_status, messageID, date) VALUES (?, ?, ?, ?, ?, ?)",
-            (admin_id, request_id, status_req, payment_status, message_id, date)
+            "INSERT INTO admins (adminID, requestID, status_req, payment_status, messageID, date, vat_percentage) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (admin_id, request_id, status_req, payment_status, message_id, date, vat_percentage)
         )
     connection.close()
 
@@ -41,11 +41,11 @@ def update_admin(col_name, col_val, param, param_val):
 
 
 
-def insert_order(request_id, is_confirmed, is_paid, admin_id, date):
+def insert_order(request_id, is_confirmed, is_paid, admin_id, date, price_for_user):
     connection = sqlite3.connect(db)
     with connection:
-        connection.execute("INSERT INTO orders (request_id, is_confirmed, is_paid, adminID, date) VALUES (?, ?, ?, ?, ?)",
-            (request_id, is_confirmed, is_paid, admin_id, date,))
+        connection.execute("INSERT INTO orders (request_id, is_confirmed, is_paid, adminID, date, price_for_user) VALUES (?, ?, ?, ?, ?, ?)",
+            (request_id, is_confirmed, is_paid, admin_id, date, price_for_user))
     connection.close()
 
 
@@ -88,6 +88,7 @@ def update_orders(col_name, col_val, param, param_val):
             f"UPDATE orders SET {col_name} = ? WHERE {param} = ?", (col_val, param_val)
         )
         connection.commit()
+        print("updated")
     except sqlite3.OperationalError as e:
         print(f"Error updating the database: {e}")
     finally:
@@ -128,7 +129,7 @@ def get_requests_all(vin=None):
     cursor = connection.cursor()
     if vin is None:
         cursor.execute(
-            "SELECT * FROM requests"
+            "SELECT * FROM requests JOIN admins ON requests.id = admins.requestID WHERE admins.status_req = 'Confirmed'"
         )
     else:
         cursor.execute(
@@ -140,12 +141,12 @@ def get_requests_all(vin=None):
     return columns, rows
 
 
-def  get_request_by_column_all(column, val, *args):
+def get_request_by_column_all(column, val, *args):
     connection = sqlite3.connect(db)
     cursor = connection.cursor()
 
     columns = ", ".join(args) if args else "*"
-    query = f"SELECT {columns} FROM requests WHERE {column} = ?"
+    query = f"SELECT {columns} FROM requests JOIN admins ON requests.id = admins.requestID WHERE admins.status_req = 'Confirmed' WHERE {column} = ?"
 
     cursor.execute(query, (val,))
     columns_name = [description[0] for description in cursor.description]

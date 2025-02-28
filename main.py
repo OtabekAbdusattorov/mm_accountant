@@ -1,6 +1,5 @@
 import math
 import threading
-
 from dotenv import load_dotenv
 from datetime import datetime
 import telebot \
@@ -314,8 +313,8 @@ def handle_edit_request(call):
         message_text += f"{field['number']}. {field['display']}\n"
 
     # Create inline keyboard for selecting fields
-    keyboard = InlineKeyboardMarkup(row_width=2)
-    buttons = [InlineKeyboardButton(str(field["number"]), callback_data=f"edit_field_{field['key']}") for field in editable_fields]
+    keyboard = InlineKeyboardMarkup(row_width=3)
+    buttons = [InlineKeyboardButton(str(field["number"]), callback_data=f"edit_user_field_{field['key']}") for field in editable_fields]
     keyboard.add(*buttons)
 
     # Send selection message
@@ -324,10 +323,10 @@ def handle_edit_request(call):
     bot.answer_callback_query(call.id)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("edit_field_"))
+@bot.callback_query_handler(func=lambda call: call.data.startswith("edit_user_field_"))
 def handle_edit_field(call):
     user_id = call.message.chat.id
-    field_key = call.data.split("_")[2]
+    field_key = call.data.split("_")[3]
 
     delete_last_message(user_id)
 
@@ -348,6 +347,8 @@ def handle_edit_value_input(message):
     delete_last_message(user_id)
 
     field_key = "plate_number" if field_key == "plate" else field_key
+    field_key = "vat_value" if field_key == "vat" else field_key
+    field_key = "last_price" if field_key == "last" else field_key
 
     bot.delete_message(user_id, message.message_id)
 
@@ -380,15 +381,16 @@ def handle_confirmation(call):
 
     status = oot.get_request_by_column("vin", vin, "status")
 
+    print(status)
+
     if status:
         bot.send_message(call.message.chat.id, "This request has already been confirmed and sent to admins.")
-
     else:
         if car_info:
-            model, vin, plate_number, last_price, vat, phone_number = car_info
+            model, vin, plate_number, last_price, vat_price, phone_number = car_info
             username = call.message.chat.first_name
 
-            vat_perc = vat / 11
+            vat_perc = vat_price / 11
 
             vat_value = math.floor(vat_perc + 0.5)
 
@@ -396,9 +398,9 @@ def handle_confirmation(call):
             connection = sqlite3.connect(db)
             with connection:
                 connection.execute("""
-                    INSERT INTO requests (model, vin, platenumber, last_price, vat_value, vat, issuerID, username, messageID, date, phoneNumber, status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (model, vin, plate_number, last_price, vat_value, vat, user_id, username, call.message.message_id, now_time, phone_number, "Confirmed"))
+                    INSERT INTO requests (model, vin, platenumber, last_price, vat, vat_price, issuerID, username, messageID, date, phoneNumber, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (model, vin, plate_number, last_price, vat_value, vat_price, user_id, username, call.message.message_id, now_time, phone_number, "Confirmed"))
             connection.close()
 
             # Clear the temp table for the user after insertion
@@ -406,16 +408,12 @@ def handle_confirmation(call):
 
             # Send a confirmation message to the user
 
-            sent_msg = bot.send_message(call.message.chat.id, "Your request has been successfully submitted. Thank you!")
-
-            user_last_message[call.message.chat.id] = sent_msg.message_id
+            bot.send_message(call.message.chat.id, "Your request has been successfully submitted. Thank you!")
 
             req_id = oot.get_request_by_column("vin", vin, "id")[0]
 
-            send_to_admins(username, model, vin, plate_number, last_price, vat, phone_number, req_id, now_time)
+            send_to_admins(username, model, vin, plate_number, last_price, vat_price, vat_value, phone_number, req_id, now_time)
             state_manager.user_state(call.message, "start_menu")
-
-            delete_last_message(user_id)
         else:
             bot.send_message(call.message.chat.id, "Error has occurred. Please try again right now. It might work or not.")
 
@@ -438,7 +436,7 @@ def handle_cancellation(call):
     state_manager.user_state(call.message, "start_menu")
 
 
-def send_to_admins(username, model, vin, plate_number, last_price, vat, phone_number, req_id, date):
+def send_to_admins(username, model, vin, plate_number, last_price, vat_price, vat, phone_number, req_id, date):
 
     admin_summary_message = (
                 f"Here is the information that has been entered by {username}:\n\n"
@@ -446,7 +444,8 @@ def send_to_admins(username, model, vin, plate_number, last_price, vat, phone_nu
                 f"Plate Number: <b>{plate_number}</b>\n"
                 f"VIN: <b>{vin}</b>\n"
                 f"Last Price: <b>{last_price:,}₩</b>\n"
-                f"VAT: <b>{vat:,}₩</b>\n"
+                f"VAT: <b>{vat_price:,}₩</b>\n"
+                f"VAT Amount: <b>{vat:,}₩</b>\n"
                 f"Dealer phone number: <b>{phone_number}</b>\n"
                 f"Requested date: <b>{date}</b>\n\n"
                 f"Request ID: {req_id}\n"
@@ -467,7 +466,7 @@ def send_to_admins(username, model, vin, plate_number, last_price, vat, phone_nu
         bot.pin_chat_message(admin, sent_message.message_id)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == "percent_by_admin")
+@bot.callback_query_handler(func=lambda call: call.data.startswith("percent_by_admin|"))
 def percent_by_admin(call):
     user_id = call.message.chat.id
 
@@ -479,7 +478,7 @@ def percent_by_admin(call):
 
 
 def handler_percent_by_admin(message, req_id):
-    perc_val = message.text
+    perc_val = int(message.text)
 
     state_manager.user_state(message, "cookie_by_admin")
 
@@ -491,44 +490,9 @@ def handler_percent_by_admin(message, req_id):
 
     oot.update_request(col_name="vat_percentage", col_val=vat_perc, param="id", param_val=req_id)
 
+    oot.update_admin(col_name="status_req", col_val="Cookie", param="requestID", param_val=req_id)
+
     bot.send_message(message.chat.id, "Yeah boy, noiice! You can go on...")
-
-
-def confirm_request(call, vin, req_id, issuer_id, vat_perc, perc):
-    result_admin = oot.get_admin_by_column("requestID", req_id, "status_req")
-
-    last_price = oot.get_request_by_column("id", req_id, "last_price")[0]
-
-    after_vat_perc_price = last_price - vat_perc
-
-    # Update or insert admin confirmation
-    admin_id = call.message.chat.id
-    now_time = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-    if result_admin:
-        oot.update_admin(col_name="status_req", col_val="Confirmed", param="requestID", param_val=req_id)
-    else:
-        msg_id = msg_ids.get(admin_id)
-        oot.insert_order(req_id, 1, "Pending", admin_id, now_time)
-        oot.insert_admin(admin_id, req_id, "Confirmed", "Pending", msg_id, now_time)
-
-    # Send confirmation message
-    confirmed_message = f"Request (VIN: {vin}) has been confirmed by {call.message.chat.first_name}, and it is ready for payment."
-
-    recipients = admin_ids if issuer_id in admin_ids else admin_ids + [issuer_id]
-    for recipient in recipients:
-        bot.send_message(recipient, text=confirmed_message)
-
-    # Send payment button
-    inline_keyboard = InlineKeyboardMarkup().add(
-        InlineKeyboardButton("Payment 💳️", callback_data=f"payment_user_{req_id}_{vin}")
-    )
-    bot.send_message(issuer_id,
-                     text=f"This request (VIN: {vin}) has been confirmed, and ready for payment.\n"
-                          f"Price you should pay after VAT share is {after_vat_perc_price:,}₩.\n"
-                          f"Your share is {perc}%.\n"
-                          f"💳 Payment status:\n⏳ PENDING...",
-                     reply_markup=inline_keyboard)
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "confirm_by_admin")
@@ -545,13 +509,13 @@ def handle_confirmation_by_admin(call):
         bot.send_message(call.message.chat.id, "❌ VIN not found in the message.")
         return
 
-    query_result = oot.get_request_by_column("vin", vin, "issuerID", "id", "vat_percentage", "percentage")
+    query_result = oot.get_request_by_column("vin", vin, "issuerID", "id", "vat_percentage", "percentage", "vat")
 
     if not query_result:
         bot.send_message(call.message.chat.id, f"❌ No request found for VIN: {vin}.")
         return
 
-    issuer_id, req_id, vat_perc, perc = query_result
+    issuer_id, req_id, vat_perc, perc, vat = query_result
 
     result_admin = oot.get_admin_by_column("requestID", req_id, "status_req")
 
@@ -559,27 +523,54 @@ def handle_confirmation_by_admin(call):
 
     admin_id = call.message.chat.id
 
-    if result_admin:
-        status = result_admin[0]
-        if status in ["Confirmed", "Cancelled"]:
-            bot.send_message(call.message.chat.id, "This request has been confirmed or cancelled.")
-        else:
-            if vat_perc is not None:
-                confirm_request(call, vin, req_id, issuer_id, vat_perc, perc)
-                oot.update_admin(col_name="status_req", col_val="Confirmed", param="requestID", param_val=req_id)
-                oot.insert_order(req_id, 1, "Pending", admin_id, now_time)
-            else:
-                bot.send_message(call.message.chat.id, "Broo, share a cookie. Don't be mean!")
-    else:
-        if vat_perc is not None:
-            msg_id = msg_ids.get(admin_id)
+    last_price = oot.get_request_by_column("id", req_id, "last_price")[0]
 
-            if req_id:
-                oot.insert_order(req_id, 1, "Pending", admin_id, now_time)
-                oot.insert_admin(call.message.chat.id, req_id, "Confirmed", "Pending", msg_id, now_time)
-                confirm_request(call, vin, req_id, issuer_id, vat_perc, perc)
+    if perc is not None:
+        if result_admin:
+            status = result_admin[0]
+            if status in ["Confirmed", "Cancelled", "Cookie"]:
+                bot.send_message(call.message.chat.id, "This request has been confirmed or cancelled.")
+            else:
+                after_vat_perc_price = math.floor((last_price - vat_perc) + 0.5)
+                vat_share_admin = math.floor((vat - vat_perc) + 0.5)
+
+                oot.update_admin(col_name="status_req", col_val="Confirmed", param="requestID", param_val=req_id)
+                oot.update_admin(col_name="vat_percentage", col_val=vat_share_admin, param="requestID", param_val=req_id)
+                oot.insert_order(req_id, 1, "Pending", admin_id, now_time, after_vat_perc_price)
+                confirm_request(call, vin, req_id, issuer_id, after_vat_perc_price, perc)
         else:
-            bot.send_message(call.message.chat.id, "Broo, share a cookie. Don't be mean!")
+            msg_id = msg_ids.get(admin_id)
+            if req_id:
+                after_vat_perc_price = math.floor((last_price - vat_perc) + 0.5)
+                vat_share_admin = math.floor((vat - after_vat_perc_price) + 0.5)
+
+                oot.insert_order(req_id, 1, "Pending", admin_id, now_time, after_vat_perc_price)
+                oot.insert_admin(call.message.chat.id, req_id, "Confirmed", "Pending", msg_id, now_time, vat_share_admin)
+                confirm_request(call, vin, req_id, issuer_id, after_vat_perc_price, perc)
+    else:
+        bot.send_message(call.message.chat.id, "Broo, share a cookie. Don't be mean!")
+
+
+def confirm_request(call, vin, req_id, issuer_id, vat_perc, perc):
+
+    # Send confirmation message
+    confirmed_message = f"Request (VIN: {vin}) has been confirmed by {call.message.chat.first_name}, and it is ready for payment."
+
+    recipients = admin_ids if issuer_id in admin_ids else admin_ids + [issuer_id]
+    for recipient in recipients:
+        bot.send_message(recipient, text=confirmed_message)
+
+    # Send payment button
+    inline_keyboard = InlineKeyboardMarkup().add(
+        InlineKeyboardButton("Payment 💳️", callback_data=f"payment_user_{req_id}_{vin}")
+    )
+    bot.send_message(issuer_id,
+                     text=f"This request (VIN: <b>{vin}</b>) has been confirmed, and ready for payment.\n"
+                          f"Price you should pay after VAT share is <b>{vat_perc:,}₩</b>.\n"
+                          f"Your share is <b>{perc}%</b>.\n"
+                          f"💳 Payment status:\n⏳ PENDING...",
+                     reply_markup=inline_keyboard,
+                     parse_mode="HTML")
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("cancel_by_admin"))
@@ -594,24 +585,21 @@ def handle_cancel_by_admin(call):
     if req_id_num:
         req_id = req_id_num[0].split("Request ID: ")[1]
 
-    result = oot.get_admin_by_column("requestID", req_id, "status_req")
-
-    if result:
-        if result[0] == "Confirmed" or result[0] == "Cancelled":
-            bot.send_message(call.message.chat.id, "This request has been confirmed or cancelled.")
-        else:
-            oot.update_admin(col_name="status_req", col_val="Cancelled", param="vin", param_val=vin)
-    else:
-        username, issuer_id = oot.get_request_by_column("id", req_id, "username", "issuerID")
-
-        now_time = datetime.now().strftime("%Y-%m-%d %H:%M")
-        oot.insert_admin(call.message.chat.id, req_id, "Cancelled", "Pending", call.message.chat.id, now_time)
-
-        msg = bot.send_message(
+    username, issuer_id = oot.get_request_by_column("id", req_id, "username", "issuerID")
+    msg = bot.send_message(
                 call.message.chat.id,
                 f"Request (VIN: {vin} by {username}) has been cancelled by {call.message.chat.first_name}, and it will be returned to *{username}*.\n\n"
                 f"Explain the reason (mandatory): ", parse_mode="Markdown")
-        bot.register_next_step_handler(msg, lambda message: process_cancellation_reason(message,issuer_id, vin, username))
+
+    for admin in admin_ids:
+        try:
+            bot.delete_message(admin, msg_ids[admin])
+        except Exception as e:
+            if "message to delete not found" in str(e):
+                continue
+            else:
+                continue
+    bot.register_next_step_handler(msg, lambda message: process_cancellation_reason(message,issuer_id, vin, username))
 
 
 def process_cancellation_reason(msg, issuer_id, vin, username):
@@ -619,9 +607,6 @@ def process_cancellation_reason(msg, issuer_id, vin, username):
 
     message_req_id = oot.get_request_by_column("issuerID", issuer_id, "messageID")[0]
     req_id = oot.get_request_by_column("issuerID", issuer_id, "id")[0]
-
-    now_time = datetime.now().strftime("%Y-%m-%d %H:%M")
-    oot.insert_admin(msg.chat.id, req_id, "Cancelled", "Cancelled", message_req_id, now_time)
 
     bot.send_message(issuer_id, f"❌ Your request (VIN: {vin}) has been cancelled, and is deleted by now.\n\n📌 *Reason:* {cancellation_reason}",
         parse_mode="Markdown")
@@ -735,16 +720,16 @@ def edit_value_handler(message, column, req_id):
     if result:
         oot.update_admin(col_name='status_req', col_val="Edited", param="requestID", param_val=req_id)
     else:
-        oot.insert_admin(admin_id, req_id, "Edited", "Pending", msg_id, now_time)
+        oot.insert_admin(admin_id, req_id, "Edited", "Pending", msg_id, now_time, 0)
 
     oot.update_request(col_name=f'{column}', col_val=message.text, param="id", param_val=req_id)
     message_id = oot.get_admin_by_column("requestID", req_id, "messageID")
 
-    username, model, vin, plate_number, last_price, vat, phone_number = (
-        oot.get_request_by_column("id", req_id, "username", "model", "vin", "plateNumber", "last_price", "vat", "phoneNumber"))
+    username, model, vin, plate_number, last_price, vat, vat_price, phone_number = (
+        oot.get_request_by_column("id", req_id, "username", "model", "vin", "plateNumber", "last_price", "vat", "vat_price", "phoneNumber"))
 
     try:
-        send_to_admins(username, model, vin, plate_number, last_price, vat, phone_number, req_id, now_time)
+        send_to_admins(username, model, vin, plate_number, last_price, vat_price, vat, phone_number, req_id, now_time)
     except Exception as e:
         bot.send_message(message.chat.id, f"❌ Error editing message: {e}")
 
@@ -769,7 +754,7 @@ def payment_user(call):
     usdt_button = InlineKeyboardButton("USDT", callback_data=f"method_usdt_{req_id}_{vin}")
     inline_keyboard.add(usdt_button, krw_button)
 
-    bot.send_message(call.message.chat.id, "Please select the payment method:")
+    bot.send_message(call.message.chat.id, "Please select the payment method and send the receipt or screenshot:", reply_markup=inline_keyboard)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("method_"))
@@ -798,7 +783,8 @@ def payment_method(call):
 
     oot.update_request(col_name="paid_type", col_val=method_type, param="id", param_val=req_id)
 
-    bot.send_message(call.message.chat.id, "Please enter the price:")
+    bot.clear_step_handler(call.message)
+
     bot.register_next_step_handler(call.message, lambda msg: ask_for_price(msg, vin))
 
 
@@ -821,7 +807,7 @@ def ask_for_price(message, vin):
         bot.send_message(message.chat.id, "Now, please send the price.")
         bot.register_next_step_handler(message, send_price, picture, vin)
     else:
-        bot.send_message(message.chat.id, "❌ Please send a valid picture.")
+        bot.send_message(message.chat.id, "❌ Please send a valid picture... (again)")
         bot.register_next_step_handler(message, ask_for_price, vin)
 
 
@@ -831,7 +817,8 @@ def send_price(message, picture, vin):
 
         oot.update_request(col_name="paidprice", col_val=price, param="vin", param_val=vin)
 
-        user_id, last_price = oot.get_request_by_column("vin", vin, "issuerID", "last_price")
+        user_id, last_price, vat_percentage, paid_type = oot.get_request_by_column("vin", vin,
+                        "issuerID", "last_price", "vat_percentage", "paid_type")
 
         balance = price - last_price
 
@@ -863,8 +850,11 @@ def send_price(message, picture, vin):
             bot.send_message(
                 admin_id,
                 text=f"User ({username}) has confirmed the payment request for (VIN: {vin}). 💳\n\n"
-                     f"Price: {price:,}₩\n",
-                reply_markup=inline_keyboard
+                     f"Price, paid by user: <b>{price:,}</b> in <b>{paid_type.upper()}</b>\n"
+                     f"VAT share: <b>{vat_percentage}₩</b>\n"
+                     f"Price that should be paid: <b>{price:,}₩</b>\n",
+                reply_markup=inline_keyboard,
+                parse_mode="HTML"
             )
 
         upload_keyboard = InlineKeyboardMarkup()
@@ -1220,7 +1210,7 @@ def handle_edit_order(call):
     keyboard = InlineKeyboardMarkup(row_width=3)
     buttons = []
     for field in editable_fields:
-        buttons.append(InlineKeyboardButton(str(field['number']), callback_data=f"edit_field_{field['number']}_{vin}_{req_id}"))
+        buttons.append(InlineKeyboardButton(str(field['number']), callback_data=f"edit_field_{field['number']}_{req_id}"))
     buttons.append(InlineKeyboardButton("❌ Cancel", callback_data=f"edit_cancel_{req_id}"))
     keyboard.add(*buttons)
 
