@@ -20,9 +20,14 @@ def handle_page_navigation(call):
         context = callback_data_parts[2]
 
         if context == 'all_orders':
-            columns, rows = oot.get_requests_all()
-            data = rows
-            items_per_page = 9
+            if call.message.chat.id in admin_ids:
+                columns, rows = oot.get_requests_ordered()
+                data = rows
+                items_per_page = 9
+            else:
+                columns, rows = oot.get_request_by_column_all("issuerID", call.message.chat.id, "order_id", "model", "vin")
+                data = rows
+                items_per_page = 9
         else:
             logger.error(f"Unknown context: {context}")
             return
@@ -98,17 +103,17 @@ def format_data(columns, rows, context):
     for row in rows:
         formatted_row = ""
         req_model = ""
-        req_id = None
+        order_id = None
         req_vin = ""
 
         for col_name, value in zip(columns, row):
-            if col_name.lower() == "id":
-                req_id = value
+            if col_name.lower() == "order_id":
+                order_id = value
             elif col_name.lower() == "model":
                 req_model = value
             elif col_name.lower() == "vin":
                 req_vin = value
-        formatted_row += f"<b>{req_id}</b>. {req_model} --- <b>({req_vin})</b>\n"
+        formatted_row += f"<b>{order_id}</b>. {req_model} --- <b>({req_vin})</b>\n"
         result_message += formatted_row
     return result_message
 
@@ -123,7 +128,7 @@ def format_results(columns, rows, context, user_id):
     if context == "all_orders":
         for row in rows:
             model_name = plate_number = vin = dealer_number = paid = None
-            doc = vat = price = username = date = req_id = kfee = rate = overseasfee = None
+            doc = vat = price = username = date = kfee = rate = overseasfee = None
             for col_name, value in zip(columns, row):
                 if col_name.lower() == "model":
                     model_name = value
@@ -152,8 +157,6 @@ def format_results(columns, rows, context, user_id):
                     kfee = value
                 elif col_name.lower() == "overseasfee":
                     overseasfee = value
-                elif col_name.lower() == "id":
-                    req_id = value
             result_message += f"Model name: \t<b>{model_name}</b>\n"
             result_message += f"Plate number: \t<b>{plate_number}</b>\n"
             result_message += f"VIN: \t<b>{vin}</b>\n"

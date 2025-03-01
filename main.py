@@ -5,6 +5,7 @@ from datetime import datetime
 import telebot \
     , sqlite3 \
     , logging \
+    , pytz \
     , os \
     , send_file_pic as sfp \
     , userState \
@@ -34,6 +35,7 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # TIME
+timezone = pytz.timezone('Asia/Seoul')
 time = datetime.now().strftime("%d/%m/%Y %H:%M")
 
 # Bot initialization
@@ -83,9 +85,9 @@ def start(message):
 
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
 
-    full_List = KeyboardButton("Full list")
-    send_Request = KeyboardButton("Send request")
-    keyboard.row(full_List, send_Request)
+    full_lists = KeyboardButton("Full list")
+    send_requests = KeyboardButton("Send request")
+    keyboard.row(full_lists, send_requests)
     bot.send_message(message.chat.id,"Welcome! Please choose an option below:" ,reply_markup=keyboard)
 
 
@@ -105,10 +107,10 @@ def full_list(message):
         else:
             bot.send_message(message.chat.id, "No data found for your requests.")
     else:
-        last_modify_userID = message.chat.id
+        last_modify_user_id = message.chat.id
 
         # Generate screenshot for the user's requests
-        screenshot_files = sfp.take_screenshot_of_data_for_user(last_modify_userID)
+        screenshot_files = sfp.take_screenshot_of_data_for_user(last_modify_user_id)
 
         if screenshot_files:
             try:
@@ -257,8 +259,6 @@ def enter_dealer_phone(message):
 def summary_request(message):
     car_info = temp_manager.get_temp_results(message.chat.id)
 
-    now_time = datetime.now().strftime("%Y-%m-%d")
-
     if car_info:
         model, vin, plate_number, last_price, vat, phone_number = car_info
         summary_message = (
@@ -269,7 +269,7 @@ def summary_request(message):
             f"Last Price: <b>{last_price:,}₩</b>\n"
             f"VAT: <b>{vat:,}₩</b>\n"
             f"Dealer phone number: <b>{phone_number}</b>\n"
-            f"Date: <b>{now_time}</b>\n\n"
+            f"Date: <b>{time}</b>\n\n"
             "Is everything correct?"
         )
     else:
@@ -381,8 +381,6 @@ def handle_confirmation(call):
 
     status = oot.get_request_by_column("vin", vin, "status")
 
-    print(status)
-
     if status:
         bot.send_message(call.message.chat.id, "This request has already been confirmed and sent to admins.")
     else:
@@ -394,13 +392,12 @@ def handle_confirmation(call):
 
             vat_value = math.floor(vat_perc + 0.5)
 
-            now_time = datetime.now().strftime("%Y-%m-%d %H:%M")
             connection = sqlite3.connect(db)
             with connection:
                 connection.execute("""
                     INSERT INTO requests (model, vin, platenumber, last_price, vat, vat_price, issuerID, username, messageID, date, phoneNumber, status)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (model, vin, plate_number, last_price, vat_value, vat_price, user_id, username, call.message.message_id, now_time, phone_number, "Confirmed"))
+                """, (model, vin, plate_number, last_price, vat_value, vat_price, user_id, username, call.message.message_id, time, phone_number, "Confirmed"))
             connection.close()
 
             # Clear the temp table for the user after insertion
@@ -412,7 +409,7 @@ def handle_confirmation(call):
 
             req_id = oot.get_request_by_column("vin", vin, "id")[0]
 
-            send_to_admins(username, model, vin, plate_number, last_price, vat_price, vat_value, phone_number, req_id, now_time)
+            send_to_admins(username, model, vin, plate_number, last_price, vat_price, vat_value, phone_number, req_id, time)
             state_manager.user_state(call.message, "start_menu")
         else:
             bot.send_message(call.message.chat.id, "Error has occurred. Please try again right now. It might work or not.")
@@ -519,8 +516,6 @@ def handle_confirmation_by_admin(call):
 
     result_admin = oot.get_admin_by_column("requestID", req_id, "status_req")
 
-    now_time = datetime.now().strftime("%Y-%m-%d %H:%M")
-
     admin_id = call.message.chat.id
 
     last_price = oot.get_request_by_column("id", req_id, "last_price")[0]
@@ -528,7 +523,7 @@ def handle_confirmation_by_admin(call):
     if perc is not None:
         if result_admin:
             status = result_admin[0]
-            if status in ["Confirmed", "Cancelled", "Cookie"]:
+            if status in ["Confirmed", "Cancelled"]:
                 bot.send_message(call.message.chat.id, "This request has been confirmed or cancelled.")
             else:
                 after_vat_perc_price = math.floor((last_price - vat_perc) + 0.5)
@@ -536,7 +531,7 @@ def handle_confirmation_by_admin(call):
 
                 oot.update_admin(col_name="status_req", col_val="Confirmed", param="requestID", param_val=req_id)
                 oot.update_admin(col_name="vat_percentage", col_val=vat_share_admin, param="requestID", param_val=req_id)
-                oot.insert_order(req_id, 1, "Pending", admin_id, now_time, after_vat_perc_price)
+                oot.insert_order(req_id, 1, "Pending", admin_id, time, after_vat_perc_price)
                 confirm_request(call, vin, req_id, issuer_id, after_vat_perc_price, perc)
         else:
             msg_id = msg_ids.get(admin_id)
@@ -544,8 +539,8 @@ def handle_confirmation_by_admin(call):
                 after_vat_perc_price = math.floor((last_price - vat_perc) + 0.5)
                 vat_share_admin = math.floor((vat - after_vat_perc_price) + 0.5)
 
-                oot.insert_order(req_id, 1, "Pending", admin_id, now_time, after_vat_perc_price)
-                oot.insert_admin(call.message.chat.id, req_id, "Confirmed", "Pending", msg_id, now_time, vat_share_admin)
+                oot.insert_order(req_id, 1, "Pending", admin_id, time, after_vat_perc_price)
+                oot.insert_admin(call.message.chat.id, req_id, "Confirmed", "Pending", msg_id, time, vat_share_admin)
                 confirm_request(call, vin, req_id, issuer_id, after_vat_perc_price, perc)
     else:
         bot.send_message(call.message.chat.id, "Broo, share a cookie. Don't be mean!")
@@ -713,14 +708,12 @@ def edit_value_handler(message, column, req_id):
             bot.send_message(message.chat.id, "❌ Invalid input! Please enter a valid number for the price.")
             return
 
-    now_time = datetime.now().strftime("%Y-%m-%d %H:%M")
-
     result = oot.get_admin_by_column("requestID", req_id, "status_req")
 
     if result:
         oot.update_admin(col_name='status_req', col_val="Edited", param="requestID", param_val=req_id)
     else:
-        oot.insert_admin(admin_id, req_id, "Edited", "Pending", msg_id, now_time, 0)
+        oot.insert_admin(admin_id, req_id, "Edited", "Pending", msg_id, time, 0)
 
     oot.update_request(col_name=f'{column}', col_val=message.text, param="id", param_val=req_id)
     message_id = oot.get_admin_by_column("requestID", req_id, "messageID")
@@ -729,7 +722,7 @@ def edit_value_handler(message, column, req_id):
         oot.get_request_by_column("id", req_id, "username", "model", "vin", "plateNumber", "last_price", "vat", "vat_price", "phoneNumber"))
 
     try:
-        send_to_admins(username, model, vin, plate_number, last_price, vat_price, vat, phone_number, req_id, now_time)
+        send_to_admins(username, model, vin, plate_number, last_price, vat_price, vat, phone_number, req_id, time)
     except Exception as e:
         bot.send_message(message.chat.id, f"❌ Error editing message: {e}")
 
@@ -1049,14 +1042,14 @@ def process_exchange_rate(message, req_id, user_id, price, vin):
 def order_complete(call):
     vin = call.data.split("_")[-1]
 
-    req_id, issuerID = oot.get_request_by_column("vin", vin, "id", "issuerID")
+    req_id, issuer_id = oot.get_request_by_column("vin", vin, "id", "issuerID")
 
     k_fee, overseas_fee = oot.get_orders_by_column("request_id", req_id, "kfee", "overseasfee")
 
     if k_fee is None or overseas_fee is None:
         bot.send_message(call.message.chat.id, "Please enter both fees first!")
     else:
-        status_order, adminID, messageID = oot.get_admin_by_column("requestID", req_id, "payment_status", "adminID", "messageID")
+        status_order = oot.get_admin_by_column("requestID", req_id, "payment_status")[0]
 
         if status_order != "Paid":
 
@@ -1086,9 +1079,9 @@ def handle_all_orders(message):
     user_id = message.chat.id
 
     if user_id in admin_ids:
-        columns, all_orders_data = oot.get_requests_all()
+        columns, all_orders_data = oot.get_requests_ordered()
     else:
-        columns, all_orders_data = oot.get_request_by_column_all("issuerID", user_id, "id", "model", "vin")
+        columns, all_orders_data = oot.get_request_by_column_all("issuerID", user_id, "order_id", "model", "vin")
 
     if not all_orders_data:
         sent_msg = bot.send_message(user_id, "No orders found.")
@@ -1101,9 +1094,9 @@ def handle_all_orders(message):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("all_orders_"))
 def view_all_orders(call):
-    req_id = call.data.split("_")[-1]
+    order_id = call.data.split("_")[-1]
 
-    columns, request_data = oot.all_orders_info(req_id)
+    columns, request_data = oot.all_orders_info(order_id)
 
     full_request_info, inline_keyboard = pg_nav.format_results(columns, request_data, "all_orders", call.message.chat.id)
 
@@ -1224,7 +1217,7 @@ def handle_edit_order(call):
 def handle_edit_field_selection(call):
     parts = call.data.split('_')
     field_number = int(parts[2])
-    req_id = parts[4]
+    req_id = parts[-1]
 
     delete_last_message(call.message.chat.id)
 
@@ -1303,7 +1296,8 @@ def handle_edit_value_input(message):
     if success:
         sent_msg = bot.send_message(user_id, f"✅ {selected_field['display']} updated successfully!")
         req_id = selected_field['key_value']
-        trigger_view_all_orders(user_id, req_id)
+        order_id = oot.get_orders_by_column("request_id", req_id, "order_id")[0]
+        trigger_view_all_orders(user_id, order_id)
     else:
         sent_msg = bot.send_message(user_id, "❌ Failed to update. Please try again.")
 

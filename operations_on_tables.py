@@ -88,7 +88,6 @@ def update_orders(col_name, col_val, param, param_val):
             f"UPDATE orders SET {col_name} = ? WHERE {param} = ?", (col_val, param_val)
         )
         connection.commit()
-        print("updated")
     except sqlite3.OperationalError as e:
         print(f"Error updating the database: {e}")
     finally:
@@ -110,26 +109,12 @@ def get_request_by_column(column, val, *args):
     return result
 
 
-def get_request_by_column_ordered(column, val, *args):
-    connection = sqlite3.connect(db)
-    cursor = connection.cursor()
-
-    columns = ", ".join(args) if args else "*"
-    query = f"SELECT r.{columns} FROM requests r JOIN orders o ON o.request_id = r.id WHERE {column} = ?"
-
-    cursor.execute(query, (val,))
-    result = cursor.fetchone()
-    connection.close()
-
-    return result
-
-
 def get_requests_all(vin=None):
     connection = sqlite3.connect(db)
     cursor = connection.cursor()
     if vin is None:
         cursor.execute(
-            "SELECT * FROM requests JOIN admins ON requests.id = admins.requestID WHERE admins.status_req = 'Confirmed'"
+            "SELECT * FROM requests"
         )
     else:
         cursor.execute(
@@ -146,7 +131,7 @@ def get_request_by_column_all(column, val, *args):
     cursor = connection.cursor()
 
     columns = ", ".join(args) if args else "*"
-    query = f"SELECT {columns} FROM requests JOIN admins ON requests.id = admins.requestID WHERE admins.status_req = 'Confirmed' WHERE {column} = ?"
+    query = f"SELECT {columns} FROM requests JOIN orders o ON o.request_id = r.id WHERE {column} = ?"
 
     cursor.execute(query, (val,))
     columns_name = [description[0] for description in cursor.description]
@@ -155,18 +140,12 @@ def get_request_by_column_all(column, val, *args):
     return columns_name, result
 
 
-def get_requests_all_ordered(vin=None):
+def get_requests_ordered():
     connection = sqlite3.connect(db)
     cursor = connection.cursor()
-    if vin is None:
-        cursor.execute(
-            "SELECT r.* FROM requests r JOIN orders o ON o.request_id = r.id"
-        )
-    else:
-        cursor.execute(
-            "SELECT r.* FROM requests r JOIN orders o ON o.request_id = r.id WHERE r.vin = ?",
-            (vin,)
-        )
+    cursor.execute(
+        "SELECT o.order_id, r.model, r.vin FROM requests r JOIN orders o ON o.request_id = r.id"
+    )
     columns = [description[0] for description in cursor.description]
     rows = cursor.fetchall()
     return columns, rows
@@ -217,7 +196,7 @@ def all_orders_info(req_id):
                 r.documents, o.rate, o.kfee, o.overseasfee, r.date, r.username
         FROM requests r
         JOIN orders o ON o.request_id = r.id
-        WHERE r.id = ?
+        WHERE o.order_id = ?
     """
 
     cursor.execute(query, (req_id,))  # Corrected tuple syntax
