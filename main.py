@@ -844,8 +844,7 @@ def send_price(message, picture, vin):
                 admin_id,
                 text=f"User ({username}) has confirmed the payment request for (VIN: {vin}). 💳\n\n"
                      f"Price, paid by user: <b>{price:,}</b> in <b>{paid_type.upper()}</b>\n"
-                     f"VAT share: <b>{vat_percentage}₩</b>\n"
-                     f"Price that should be paid: <b>{price:,}₩</b>\n",
+                     f"VAT share: <b>{vat_percentage:,}₩</b>\n",
                 reply_markup=inline_keyboard,
                 parse_mode="HTML"
             )
@@ -1345,6 +1344,61 @@ def handle_edit_cancel(call):
     user_last_message[call.message.chat.id] = sent_msg.message_id
 
     bot.answer_callback_query(call.id)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("comment_"))
+def comment_handler(call):
+    req_id = call.data.split("_")[-1]
+    count_comment = call.data.split("_")[-2]
+
+    state_manager.user_state(call.message, f"commenting_{req_id}")
+
+    inline_keyboard = InlineKeyboardMarkup(row_width=2)
+    show_comments_button = InlineKeyboardButton(f"📝 Show comments - {count_comment}", callback_data=f"show_comments_{req_id}")
+    comment_button = InlineKeyboardButton("✏️ Leave comment", callback_data=f"commenting_{req_id}")
+    inline_keyboard.add(show_comments_button, comment_button)
+
+
+    bot.send_message(call.message.chat.id, "Choose one option below:", reply_markup=inline_keyboard)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("commenting_"))
+def commenting(call):
+    req_id = call.data.split("_")[-1]
+
+    bot.send_message(call.message.chat.id, "Leave your comment:")
+    bot.register_next_step_handler(call.message, get_comment, req_id)
+
+
+def get_comment(message, req_id):
+    admin_id = message.chat.id
+    username = message.chat.first_name
+
+    vin = oot.get_request_by_column("id", req_id, "vin")[0]
+
+    comment = message.text.strip()
+
+    oot.insert_comments(req_id, admin_id, username, comment)
+
+    for admin in admin_ids:
+        bot.send_message(admin, f"<b>{username}</b> has commented on <b>{vin}</b>\n\n <b>{comment}</b>", parse_mode="HTML")
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("show_comments_"))
+def show_comments(call):
+    req_id = call.data.split("_")[-1]
+
+    vin = oot.get_request_by_column("id", req_id, "vin")[0]
+
+    comments = oot.get_comments(req_id)
+
+    if not comments:
+        bot.send_message(call.message.chat.id, "No comments found for this request.")
+        return
+
+    comment_text = "\n\n".join([f"👤 {username}: {comment}" for username, comment in comments])
+
+    bot.send_message(call.message.chat.id, f"📝 Comments on <b>{vin}</b>:\n\n{comment_text}", parse_mode="HTML")
 
 
 

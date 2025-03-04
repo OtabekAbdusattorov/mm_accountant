@@ -94,5 +94,16 @@ def create_table():
         """)
 
 
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                request_id INTEGER,
+                adminID INTEGER,
+                username TEXT,
+                comment TEXT
+        )
+        """)
+
+
     ## connection closed
     connection.close()

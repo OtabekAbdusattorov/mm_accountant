@@ -127,8 +127,8 @@ def format_results(columns, rows, context, user_id):
 
     if context == "all_orders":
         for row in rows:
-            model_name = plate_number = vin = dealer_number = paid = None
-            doc = vat = price = username = date = kfee = rate = overseasfee = None
+            model_name = plate_number = vin = dealer_number = paid = share = req_id = None
+            doc = vat = price = username = date = kfee = rate = overseasfee = vat_share = None
             for col_name, value in zip(columns, row):
                 if col_name.lower() == "model":
                     model_name = value
@@ -157,6 +157,15 @@ def format_results(columns, rows, context, user_id):
                     kfee = value
                 elif col_name.lower() == "overseasfee":
                     overseasfee = value
+                elif col_name.lower() == "vat_percentage":
+                    vat_share = value
+                elif col_name.lower() == "percentage":
+                    share = value
+                elif col_name.lower() == "id":
+                    req_id = value
+
+            count_comments = len(oot.get_comments(req_id))
+
             result_message += f"Model name: \t<b>{model_name}</b>\n"
             result_message += f"Plate number: \t<b>{plate_number}</b>\n"
             result_message += f"VIN: \t<b>{vin}</b>\n"
@@ -167,7 +176,9 @@ def format_results(columns, rows, context, user_id):
             result_message += f"Documents: \t<b>{doc}</b>\n"
             result_message += f"Exchange rate: \t<b>{rate:,}</b>\n"
             result_message += f"Fees in Korea: \t<b>{kfee:,}₩</b>\n"
-            result_message += f"Overseas fee: \t<b>{overseasfee:,}$</b>\n\n"
+            result_message += f"Overseas fee: \t<b>{overseasfee:,}$</b>\n"
+            result_message += f"VAT share % (user): \t<b>{share}%</b>\n"
+            result_message += f"VAT share amount (user): \t<b>{vat_share:,}₩</b>\n\n"
             result_message += f"Request created on \t<b>{date}</b> by <b>{username}</b>"
 
             inline_keyboard = InlineKeyboardMarkup(row_width=2)
@@ -178,8 +189,9 @@ def format_results(columns, rows, context, user_id):
             if paid is not None:
                 inline_keyboard.add(payment_show)
             if user_id in admin_ids:
-                edit_button = InlineKeyboardButton("Edit", callback_data=f"edit_orders_{vin}")
-                inline_keyboard.add(edit_button)
+                edit_button = InlineKeyboardButton("🖋 Edit", callback_data=f"edit_orders_{vin}")
+                comment_button = InlineKeyboardButton(f"💬 Comment - {count_comments}", callback_data=f"comment_{count_comments}_{req_id}")
+                inline_keyboard.add(comment_button, edit_button)
 
             return result_message, inline_keyboard
 

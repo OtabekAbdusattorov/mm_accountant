@@ -109,20 +109,16 @@ def get_request_by_column(column, val, *args):
     return result
 
 
-def get_requests_all(vin=None):
+def get_requests_all(vin):
     connection = sqlite3.connect(db)
     cursor = connection.cursor()
-    if vin is None:
-        cursor.execute(
-            "SELECT * FROM requests"
-        )
-    else:
-        cursor.execute(
-            "SELECT * FROM requests WHERE vin = ?",
-            (vin,)
-        )
+    cursor.execute(
+        "SELECT * FROM requests WHERE vin = ?",
+        (vin,)
+    )
     columns = [description[0] for description in cursor.description]
     rows = cursor.fetchall()
+
     return columns, rows
 
 
@@ -144,7 +140,12 @@ def get_requests_ordered():
     connection = sqlite3.connect(db)
     cursor = connection.cursor()
     cursor.execute(
-        "SELECT o.order_id, r.model, r.vin FROM requests r JOIN orders o ON o.request_id = r.id"
+        """
+        SELECT o.order_id, r.model, r.vin FROM requests r
+        JOIN orders o ON o.request_id = r.id
+        JOIN admins a ON a.requestID = r.id
+        WHERE a.is_completed = 1
+        """
     )
     columns = [description[0] for description in cursor.description]
     rows = cursor.fetchall()
@@ -192,8 +193,8 @@ def all_orders_info(req_id):
     connection = sqlite3.connect(db)
     cursor = connection.cursor()
     query = """
-        SELECT r.model, r.plateNumber, r.vin, r.last_price, r.vat, r.phoneNumber, r.paidprice, 
-                r.documents, o.rate, o.kfee, o.overseasfee, r.date, r.username
+        SELECT r.id, r.model, r.plateNumber, r.vin, r.last_price, r.vat, r.phoneNumber, r.paidprice, 
+                r.documents, o.rate, o.kfee, o.overseasfee, r.date, r.username, r.percentage, r.vat_percentage
         FROM requests r
         JOIN orders o ON o.request_id = r.id
         WHERE o.order_id = ?
@@ -256,7 +257,7 @@ def get_balance(user_id=None):
 
     connection.close()
 
-    return result  # Will return a tuple for one user or a list of tuples for all users
+    return result
 
 
 def update_table(table, column, new_value, key_column, key_value):
@@ -271,3 +272,24 @@ def update_table(table, column, new_value, key_column, key_value):
         return False
     finally:
         conn.close()
+
+
+def insert_comments(req_id, admin_id, username, comment):
+    connection = sqlite3.connect(db)
+    cursor = connection.cursor()
+    cursor.execute("""
+        INSERT INTO comments (request_id, adminID, username, comment) VALUES (?, ?, ?, ?)
+    """, (req_id, admin_id, username, comment))
+    connection.commit()
+    connection.close()
+
+
+def get_comments(req_id):
+    connection = sqlite3.connect(db)
+    cursor = connection.cursor()
+    cursor.execute("""
+        SELECT username, comment FROM comments WHERE request_id = ?
+    """, (req_id,))
+    result = cursor.fetchall()
+    connection.close()
+    return result
