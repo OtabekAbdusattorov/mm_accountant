@@ -12,7 +12,18 @@ def fetch_all_data_for_admin():
     cursor = connection.cursor()
 
     # Query to fetch all requests data
-    cursor.execute("SELECT Model, VIN, PlateNumber, Last_Price, VAT, username, issuerID, phoneNumber, date FROM requests")
+    cursor.execute("""
+                   SELECT
+                        r.id as 'No.', r.model as Model, r.plateNumber as 'CAR PLATE NUMBER', r.vin as 'VIN NUMBER',
+                        r.last_price as 'Last Price', r.vat_price as 'VAT', r.paidprice as 'Paid', r.date as Date,
+                        o.kfee as 'FEES IN KOREA', o.overseasfee as 'LOGISTICS FEES', o.overseasfee * rate as 'LOGISTICS FEES IN KRW',
+                        o.rate as 'Exchange Rate',
+                        (r.last_price - r.vat_percentage) + o.kfee + (o.overseasfee * rate) as 'Total price to Customer',
+                        GROUP_CONCAT(c.comment, '\n') as 'Comments', GROUP_CONCAT(c.username, ', ') as 'Comment by'
+                    FROM requests r
+                    JOIN orders o ON r.id = o.request_id
+                    JOIN comments c ON c.request_id = r.id
+                   """)
 
     # Get all data and column names
     data = cursor.fetchall()
@@ -45,7 +56,19 @@ def fetch_data_from_database_for_user(user_id):
     connection = sqlite3.connect(db)
     cursor = connection.cursor()
     cursor.execute(
-        "SELECT Model, VIN, PlateNumber, Last_Price, VAT, username, issuerID, phoneNumber, date FROM requests WHERE issuerID = ?",
+        """
+        SELECT
+            r.id as 'No.', r.model as Model, r.plateNumber as 'CAR PLATE NUMBER', r.vin as 'VIN NUMBER',
+            r.last_price as 'Last Price', r.vat_price as 'VAT', r.paidprice as 'Paid', r.date as Date,
+            o.kfee as 'FEES IN KOREA', o.overseasfee as 'LOGISTICS FEES', o.overseasfee * rate as 'LOGISTICS FEES IN KRW',
+            o.rate as 'Exchange Rate',
+            (r.last_price - r.vat_percentage) + o.kfee + (o.overseasfee * rate) as 'Total price to Customer',
+            GROUP_CONCAT(c.comment, '\n') as 'Comments', GROUP_CONCAT(c.username, ', ') as 'Comment by'
+        FROM requests r
+        JOIN orders o ON r.id = o.request_id
+        JOIN comments c ON c.request_id = r.id
+        WHERE r.issuerID = ?
+        """,
         (user_id,)
 
     )
