@@ -351,18 +351,27 @@ def handle_edit_value_input(message):
     field_key = "last_price" if field_key == "last" else field_key
 
     bot.delete_message(user_id, message.message_id)
+    if field_key == "vin":
+        if not is_valid_vin(message.text):
+            bot.send_message(message.chat.id,
+                         "❌ Invalid VIN! It must be exactly 17 characters long and contain only uppercase letters and numbers.")
+            return
+    if field_key in ["last_price", "vat"]:
+        if not message.text.isdigit():
+            bot.send_message(message.chat.id, "❌ Invalid input! Please enter a valid number for the price.")
+            return
+    else:
+        temp_manager.update_temp_results(user_id, field_key, new_value)
 
-    temp_manager.update_temp_results(user_id, field_key, new_value)
-
-    state_manager.user_state(message, "summary_request")
-    if user_id in user_last_request_info:
-        try:
-            bot.delete_message(user_id, user_last_request_info[user_id])
-        except Exception as e:
-            print(f"Error deleting previous order details message: {e}")
-        finally:
-            del user_last_request_info[user_id]
-    summary_request(message)
+        state_manager.user_state(message, "summary_request")
+        if user_id in user_last_request_info:
+            try:
+                bot.delete_message(user_id, user_last_request_info[user_id])
+            except Exception as e:
+                print(f"Error deleting previous order details message: {e}")
+            finally:
+                del user_last_request_info[user_id]
+        summary_request(message)
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "confirm")
@@ -412,7 +421,7 @@ def handle_confirmation(call):
             send_to_admins(username, model, vin, plate_number, last_price, vat_price, vat_value, phone_number, req_id, time)
             state_manager.user_state(call.message, "start_menu")
         else:
-            bot.send_message(call.message.chat.id, "Error has occurred. Please try again right now. It might work or not.")
+            bot.answer_callback_query(call.id, "Error has occurred. Please try again right now. It might work or not.")
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "cancel")
@@ -471,10 +480,10 @@ def percent_by_admin(call):
     req_id = callback_data_parts[1]
 
     bot.send_message(user_id, "Percentage of the cookie you want to share: (e.g: 30 or 70)")
-    bot.register_next_step_handler(call.message, handler_percent_by_admin, req_id)
+    bot.register_next_step_handler(call.message, handler_percent_by_admin, req_id, call)
 
 
-def handler_percent_by_admin(message, req_id):
+def handler_percent_by_admin(message, req_id, call):
     perc_val = int(message.text)
 
     state_manager.user_state(message, "cookie_by_admin")
@@ -489,7 +498,7 @@ def handler_percent_by_admin(message, req_id):
 
     oot.update_admin(col_name="status_req", col_val="Cookie", param="requestID", param_val=req_id)
 
-    bot.send_message(message.chat.id, "Yeah boy, noiice! You can go on...")
+    bot.answer_callback_query(call.id, "Yeah boy, noiice! You can go on...")
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "confirm_by_admin")
@@ -503,13 +512,13 @@ def handle_confirmation_by_admin(call):
         vin = vin_num[0].split("VIN: ")[1]
 
     if not vin:
-        bot.send_message(call.message.chat.id, "❌ VIN not found in the message.")
+        bot.answer_callback_query(call.id, "❌ VIN not found in the message.")
         return
 
     query_result = oot.get_request_by_column("vin", vin, "issuerID", "id", "vat_percentage", "percentage", "vat")
 
     if not query_result:
-        bot.send_message(call.message.chat.id, f"❌ No request found for VIN: {vin}.")
+        bot.answer_callback_query(call.id, f"❌ No request found for VIN: {vin}.")
         return
 
     issuer_id, req_id, vat_perc, perc, vat = query_result
@@ -524,7 +533,7 @@ def handle_confirmation_by_admin(call):
         if result_admin:
             status = result_admin[0]
             if status in ["Confirmed", "Cancelled"]:
-                bot.send_message(call.message.chat.id, "This request has been confirmed or cancelled.")
+                bot.answer_callback_query(call.id, "This request has been confirmed or cancelled.")
             else:
                 after_vat_perc_price = math.floor((last_price - vat_perc) + 0.5)
                 vat_share_admin = math.floor((vat - vat_perc) + 0.5)
@@ -543,7 +552,7 @@ def handle_confirmation_by_admin(call):
                 oot.insert_admin(call.message.chat.id, req_id, "Confirmed", "Pending", msg_id, time, vat_share_admin)
                 confirm_request(call, vin, req_id, issuer_id, after_vat_perc_price, perc)
     else:
-        bot.send_message(call.message.chat.id, "Broo, share a cookie. Don't be mean!")
+        bot.answer_callback_query(call.id, "Broo, share a cookie. Don't be mean!")
 
 
 def confirm_request(call, vin, req_id, issuer_id, vat_perc, perc):
@@ -666,7 +675,7 @@ def view_edit_requests_admin(call):
 
     if result:
         if result[0] in ["Confirmed", "Cancelled"]:
-            bot.send_message(call.message.chat.id, "This request has been confirmed or cancelled.")
+            bot.answer_callback_query(call.id, "This request has been confirmed or cancelled.")
         else:
             send_request_info(call.message.chat.id, vin)
     else:
@@ -685,10 +694,10 @@ def edit_request_callback(call):
     req_id = call.data.split("_")[-1]
 
     bot.send_message(call.message.chat.id, f"Edit the {edit_index}:")
-    bot.register_next_step_handler(call.message, lambda msg: edit_value_handler(msg, edit_index, req_id))
+    bot.register_next_step_handler(call.message, lambda msg: edit_value_handler(msg, edit_index, req_id, call))
 
 
-def edit_value_handler(message, column, req_id):
+def edit_value_handler(message, column, req_id, call):
     admin_id = message.chat.id
     msg_id = msg_ids.get(admin_id)
 
@@ -699,7 +708,7 @@ def edit_value_handler(message, column, req_id):
     # Validate VIN if editing VIN
     if column == "vin":
         if not is_valid_vin(message.text):
-            bot.send_message(message.chat.id, "❌ Invalid VIN! It must be exactly 17 characters long and contain only uppercase letters and numbers.")
+            bot.answer_callback_query(call.id, "❌ Invalid VIN! It must be exactly 17 characters long and contain only uppercase letters and numbers.")
             return
 
     # Validate price if editing price-related fields
@@ -778,10 +787,10 @@ def payment_method(call):
 
     bot.clear_step_handler(call.message)
 
-    bot.register_next_step_handler(call.message, lambda msg: ask_for_price(msg, vin))
+    bot.register_next_step_handler(call.message, lambda msg: ask_for_price(msg, vin, call))
 
 
-def ask_for_price(message, vin):
+def ask_for_price(message, vin, call):
     if message.photo:
         picture = message.photo[-1].file_id
 
@@ -800,7 +809,7 @@ def ask_for_price(message, vin):
         bot.send_message(message.chat.id, "Now, please send the price.")
         bot.register_next_step_handler(message, send_price, picture, vin)
     else:
-        bot.send_message(message.chat.id, "❌ Please send a valid picture... (again)")
+        bot.answer_callback_query(call.id, "❌ Please send a valid picture... (again)")
         bot.register_next_step_handler(message, ask_for_price, vin)
 
 
@@ -870,7 +879,7 @@ def fees(call):
     result_rate = oot.get_orders_by_column("request_id", req_id, "rate")[0]
 
     if result_rate is None:
-        bot.send_message(call.message.chat.id, "Please set the exchange rate first!")
+        bot.answer_callback_query(call.id, "Please set the exchange rate first!")
     else:
         user_id = call.message.chat.id
         type_fee = call.data.split("_")[-2]  # 'korea' or 'overseas'
@@ -885,15 +894,15 @@ def fees(call):
             currency = "$"
 
         bot.send_message(user_id, f"Please enter the {type_fee.capitalize()} fee in {currency} for VIN: {vin} in numbers.")
-        bot.register_next_step_handler(call.message, handle_fee_input, type_fee, req_id, vin)
+        bot.register_next_step_handler(call.message, handle_fee_input, type_fee, req_id, vin, call)
 
 
 
-def handle_fee_input(message, fee_type, req_id, vin):
+def handle_fee_input(message, fee_type, req_id, vin, call):
     user_id = message.chat.id
 
     if not message.text.isdigit():
-        bot.send_message(user_id, "Invalid input. Please enter a valid numeric amount.")
+        bot.answer_callback_query(call.id, "Invalid input. Please enter a valid numeric amount.")
         return
     fee_amount = float(message.text)
 
@@ -941,7 +950,7 @@ def upload_doc(call):
         user_last_message[call.message.chat.id] = sent_msg.message_id
         state_manager.user_state(call.message, f"awaiting_images_{vin}")
     else:
-        bot.send_message(call.message.chat.id, "You have already uploaded document images for this car.")
+        bot.answer_callback_query(call.id, "You have already uploaded document images for this car.")
 
 
 @bot.message_handler(content_types=["photo"],
@@ -965,12 +974,13 @@ def handle_uploaded_images(message):
 
     # Instead of waiting for 100 images, zip all when the user sends the "/done" command
     if len(user_images[user_id]["images"]) >= 1000:
-        bot.send_message(user_id, "Creating your ZIP file now...")
+        send_msg = bot.send_message(user_id, "Creating your ZIP file now...")
         zip_path = md.create_zip_and_save(user_images, user_id, vin)
         if zip_path:
             bot.send_document(user_id, open(zip_path, 'rb'))
             os.remove(zip_path)  # Cleanup
         message_sent_flags.pop(user_id, None)
+        bot.delete_message(user_id, send_msg.message_id)
 
 
 def send_upload_message(user_id):
@@ -1046,7 +1056,7 @@ def order_complete(call):
     k_fee, overseas_fee = oot.get_orders_by_column("request_id", req_id, "kfee", "overseasfee")
 
     if k_fee is None or overseas_fee is None:
-        bot.send_message(call.message.chat.id, "Please enter both fees first!")
+        bot.answer_callback_query(call.id, "Please enter both fees first!")
     else:
         status_order = oot.get_admin_by_column("requestID", req_id, "payment_status")[0]
 
@@ -1068,7 +1078,7 @@ def order_complete(call):
                         continue
 
         else:
-            bot.send_message(call.message.chat.id, f"Request for (VIN: {vin}) is already closed and confirmed!")
+            bot.answer_callback_query(call.id, f"Request for (VIN: {vin}) is already closed and confirmed!")
 
 
 @bot.message_handler(commands=['all_orders'])
@@ -1115,10 +1125,10 @@ def show_documents(call):
     zip_filename = f"documents/{vin}_documents.zip"
 
     if not os.path.exists(zip_filename):
-        bot.send_message(call.message.chat.id, "No documents found for this VIN.")
+        bot.answer_callback_query(call.id, "No documents found for this VIN.")
         return
 
-    bot.send_message(call.message.chat.id, "Retrieving documents... Please wait.")
+    bot.answer_callback_query(call.id, "Retrieving documents... Please wait.")
     md.unzip_and_send_files(call.message.chat.id, zip_filename)
 
 
@@ -1132,7 +1142,7 @@ def retrieve_payment(call):
             bot.send_photo(call.message.chat.id, f)
             bot.send_message(call.message.chat.id, f"Receipt for VIN: {vin}.")
     else:
-        bot.send_message(call.message.chat.id, "❌ No receipt found for this VIN.")
+        bot.answer_callback_query(call.id, "❌ No receipt found for this VIN.")
 
 
 @bot.message_handler(commands=['balance'])
@@ -1393,7 +1403,7 @@ def show_comments(call):
     comments = oot.get_comments(req_id)
 
     if not comments:
-        bot.send_message(call.message.chat.id, "No comments found for this request.")
+        bot.answer_callback_query(call.id, "No comments found for this request.")
         return
 
     comment_text = "\n\n".join([f"👤 {username}: {comment}" for username, comment in comments])

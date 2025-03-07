@@ -1,3 +1,5 @@
+import math
+
 import telebot, logging, os
 from dotenv import load_dotenv
 import operations_on_tables as oot
@@ -158,7 +160,7 @@ def format_results(columns, rows, context, user_id):
                 elif col_name.lower() == "overseasfee":
                     overseasfee = value
                 elif col_name.lower() == "vat_percentage":
-                    vat_share = value
+                    vat_share = math.floor(value + 0.5)
                 elif col_name.lower() == "percentage":
                     share = value
                 elif col_name.lower() == "id":
