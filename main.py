@@ -825,17 +825,6 @@ def send_price(message, picture, vin):
         user_id, last_price, vat_percentage, paid_type = oot.get_request_by_column("vin", vin,
                         "issuerID", "last_price", "vat_percentage", "paid_type")
 
-        balance = price - last_price
-
-
-        last_balance_result = oot.get_balance(message.chat.id)
-        if last_balance_result[0] is None:
-            oot.update_balance(balance, user_id)
-        else:
-            last_balance, issuer_id = last_balance_result
-            balance = last_balance + price - last_price
-            oot.update_balance(balance, user_id)
-
 
 
         inline_keyboard = InlineKeyboardMarkup(row_width=2)
@@ -922,21 +911,6 @@ def handle_fee_input(message, fee_type, req_id, vin, call):
     else:
         for admin in admin_ids+user_id:
             bot.send_message(admin, f"{fee_type.capitalize()} fee for VIN {vin} has been updated to {fee_amount:,}{currency}")
-
-
-    user_id = oot.get_request_by_column("vin", vin, "issuerID")[0]
-    balance, not_used = oot.get_balance(user_id)
-    if fee_type == "korea":
-        after_fee_balance = balance - fee_amount
-
-    else:
-        rate = oot.get_orders_by_column("request_id", req_id, "rate")[0]
-        rate_price = fee_amount * rate
-
-        after_fee_balance = balance - rate_price
-
-    oot.update_balance(after_fee_balance, user_id)
-
 
 
 user_images = {}
@@ -1146,44 +1120,6 @@ def retrieve_payment(call):
             bot.send_message(call.message.chat.id, f"Receipt for VIN: {vin}.")
     else:
         bot.answer_callback_query(call.id, "❌ No receipt found for this VIN.")
-
-
-@bot.message_handler(commands=['balance'])
-def handle_balance(message):
-    user_id = message.chat.id
-
-    # Check if user is an admin
-    if user_id in admin_ids:
-        # Fetch all users' balances
-        results = oot.get_balance()  # No user_id means fetch all
-
-        if results:
-            balances_text = ""
-            for result in results:
-                balance, issuer_id = result
-                if balance is not None:  # Skip entries with None as balance
-                    username = oot.get_request_by_column("issuerID", issuer_id, "username")[0]
-                    balances_text += f"Username: {username}\nBalance: {balance:,}₩\n\n"
-
-            if balances_text:
-                bot.send_message(user_id, f"All Users' Balances:\n\n{balances_text}")
-            else:
-                bot.send_message(user_id, "No balances available for users.")
-        else:
-            bot.send_message(user_id, "No balances found.")
-
-    else:
-        # Fetch only the balance for this user
-        result = oot.get_balance(user_id)
-        if result:
-            balance, user_id = result
-            if balance is not None:
-                username = oot.get_request_by_column("issuerID", user_id, "username")[0]
-                bot.send_message(user_id, f"Username: {username}\nBalance: {balance:,}₩")
-            else:
-                bot.send_message(user_id, "Your balance is not set.")
-        else:
-            bot.send_message(user_id, "You don't have a balance record.")
 
 
 user_edit_context = {}
@@ -1413,6 +1349,52 @@ def show_comments(call):
 
     bot.send_message(call.message.chat.id, f"📝 Comments on <b>{vin}</b>:\n\n{comment_text}", parse_mode="HTML")
 
+
+@bot.message_handler(commands=['balance'])
+def handle_balance(message):
+    user_id = message.chat.id
+
+    connection = sqlite3.connect(db)
+    cursor = connection.cursor()
+
+    def calculate_balance(user_id):
+        balance = 0
+
+        cursor.execute(
+            "SELECT id, paidprice, paid_type FROM requests WHERE issuerID = ?",
+            (user_id,)
+        )
+        result = cursor.fetchall()
+
+        for row in result:
+            request_id, paid_price, paid_type = row
+            cursor.execute("SELECT price_for_user, kfee, rate, overseasfee FROM orders WHERE request_id = ?",
+                           (request_id,))
+            orders = cursor.fetchall()
+
+            for order in orders:
+                price_for_user, k_fee, rate, overseas_fee = order
+                paid_price = paid_price * rate if paid_type == 'usdt' else paid_price
+                balance += paid_price - (price_for_user + k_fee + (overseas_fee * rate))
+
+        return balance
+
+    if user_id in admin_ids:
+        # Admin sees all users' balances
+        cursor.execute("SELECT DISTINCT issuerID, username FROM requests")
+        users = cursor.fetchall()
+
+        balances = []
+        for (issuer_id, username) in users:
+            user_balance = calculate_balance(issuer_id)
+            balances.append(f"{username}: {user_balance:,}₩")
+
+        bot.send_message(user_id, "\n".join(balances))
+    else:
+        user_balance = calculate_balance(user_id)
+        bot.send_message(user_id, f'Your balance: {user_balance:,}₩')
+
+    connection.close()
 
 
 if __name__ == '__main__':

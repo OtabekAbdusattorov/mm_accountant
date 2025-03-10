@@ -230,36 +230,6 @@ def status_query(req_id):
     return columns, result
 
 
-def update_balance(price, user_id):
-    connection = sqlite3.connect(db)
-    cursor = connection.cursor()
-    cursor.execute(
-        f"UPDATE userStates SET balance = ? WHERE user_id = ?", (price, user_id)
-    )
-    connection.commit()
-    connection.close()
-
-
-def get_balance(user_id=None):
-    connection = sqlite3.connect(db)
-    cursor = connection.cursor()
-
-    if user_id is None:
-        # Fetch all balances if user_id is None (admin mode)
-        query = "SELECT balance, user_id FROM userStates"
-        cursor.execute(query)
-        result = cursor.fetchall()  # Fetch all rows as a list of tuples
-    else:
-        # Fetch the balance for a specific user
-        query = "SELECT balance, user_id FROM userStates WHERE user_id = ?"
-        cursor.execute(query, (user_id,))
-        result = cursor.fetchone()  # Fetch one record (tuple) for the specific user
-
-    connection.close()
-
-    return result
-
-
 def update_table(table, column, new_value, key_column, key_value):
     conn = sqlite3.connect(db)
     try:
