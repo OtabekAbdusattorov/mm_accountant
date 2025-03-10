@@ -168,13 +168,16 @@ def format_results(columns, rows, context, user_id):
 
             count_comments = len(oot.get_comments(req_id))
 
+            type_paid_price = oot.get_request_by_column("vin", vin, "paid_type")[0]
+            type_paid = 'KRW' if type_paid_price == 'krw' else 'USDT'
+
             result_message += f"Model name: \t<b>{model_name}</b>\n"
             result_message += f"Plate number: \t<b>{plate_number}</b>\n"
             result_message += f"VIN: \t<b>{vin}</b>\n"
             result_message += f"Last price: \t<b>{price:,}₩</b>\n"
             result_message += f"VAT: \t<b>{vat:,}₩</b>\n"
             result_message += f"Dealer phone number: \t<b>{dealer_number}</b>\n"
-            result_message += f"Paid price:\t<b>{paid:,}₩</b>\n"
+            result_message += f"Paid price:\t<b>{paid:,} in {type_paid}</b>\n"
             result_message += f"Documents: \t<b>{doc}</b>\n"
             result_message += f"Exchange rate: \t<b>{rate:,}</b>\n"
             result_message += f"Fees in Korea: \t<b>{kfee:,}₩</b>\n"

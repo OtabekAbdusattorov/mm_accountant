@@ -15,14 +15,12 @@ def fetch_all_data_for_admin():
     cursor.execute("""
                    SELECT
                         r.id as 'No.', r.model as Model, r.plateNumber as 'CAR PLATE NUMBER', r.vin as 'VIN NUMBER',
-                        r.last_price as 'Last Price', r.vat_price as 'VAT', r.paidprice as 'Paid', r.date as Date,
-                        o.kfee as 'FEES IN KOREA', o.overseasfee as 'LOGISTICS FEES', o.overseasfee * rate as 'LOGISTICS FEES IN KRW',
+                        r.last_price as 'Last Price in KRW', r.vat_price as 'VAT in KRW', r.paidprice as 'Paid Price', r.paid_type as 'PAID IN', r.date as Date,
+                        o.kfee as 'FEES IN KOREA in KRW', o.overseasfee as 'LOGISTICS FEES in USD', o.overseasfee * rate as 'LOGISTICS FEES IN KRW',
                         o.rate as 'Exchange Rate',
-                        (r.last_price - r.vat_percentage) + o.kfee + (o.overseasfee * rate) as 'Total price to Customer',
-                        GROUP_CONCAT(c.comment, '\n') as 'Comments', GROUP_CONCAT(c.username, ', ') as 'Comment by'
+                        (r.last_price - r.vat_percentage) + o.kfee + (o.overseasfee * rate) as 'Total price to Customer in KRW'
                     FROM requests r
                     JOIN orders o ON r.id = o.request_id
-                    JOIN comments c ON c.request_id = r.id
                    """)
 
     # Get all data and column names
@@ -59,14 +57,12 @@ def fetch_data_from_database_for_user(user_id):
         """
         SELECT
             r.id as 'No.', r.model as Model, r.plateNumber as 'CAR PLATE NUMBER', r.vin as 'VIN NUMBER',
-            r.last_price as 'Last Price', r.vat_price as 'VAT', r.paidprice as 'Paid', r.date as Date,
-            o.kfee as 'FEES IN KOREA', o.overseasfee as 'LOGISTICS FEES', o.overseasfee * rate as 'LOGISTICS FEES IN KRW',
+            r.last_price as 'Last Price in KRW', r.vat_price as 'VAT in KRW', r.paidprice as 'Paid Price', r.paid_type as 'PAID IN', r.date as Date,
+            o.kfee as 'FEES IN KOREA in KRW', o.overseasfee as 'LOGISTICS FEES in USD', o.overseasfee * rate as 'LOGISTICS FEES IN KRW',
             o.rate as 'Exchange Rate',
-            (r.last_price - r.vat_percentage) + o.kfee + (o.overseasfee * rate) as 'Total price to Customer',
-            GROUP_CONCAT(c.comment, '\n') as 'Comments', GROUP_CONCAT(c.username, ', ') as 'Comment by'
+            (r.last_price - r.vat_percentage) + o.kfee + (o.overseasfee * rate) as 'Total price to Customer in KRW'
         FROM requests r
         JOIN orders o ON r.id = o.request_id
-        JOIN comments c ON c.request_id = r.id
         WHERE r.issuerID = ?
         """,
         (user_id,)
