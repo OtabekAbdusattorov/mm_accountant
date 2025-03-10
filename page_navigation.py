@@ -205,16 +205,16 @@ def format_results(columns, rows, context, user_id):
             data_dict = dict(zip(columns, row))
 
             editable_keys = [key for key in data_dict.keys() if key.lower() not in
-                             ['username', 'id', 'issuerid', 'status', 'date', 'messageid', 'paidprice', 'documents', 'paid_type', 'percentage', 'vat_percentage']]
+                             ['id', 'issuerid', 'status', 'messageid', 'paidprice', 'documents', 'paid_type', 'percentage', 'vat_percentage', 'vat']]
             key_count = len(editable_keys)
 
             result_message += f"<b>{index}.</b> Model: <b>{data_dict['model']}</b>\n"
             result_message += f"<b>{index+1}.</b> VIN: <b>{data_dict['vin']}</b>\n"
             result_message += f"<b>{index+2}.</b> Plate Number: <b>{data_dict['plateNumber']}</b>\n"
             result_message += f"<b>{index+3}.</b> Price: <b>{data_dict['last_price']:,}₩</b>\n"
-            result_message += f"<b>{index+4}.</b> VAT: <b>{data_dict['vat']:,}₩</b>\n"
+            result_message += f"<b>{index+4}.</b> VAT: <b>{data_dict['vat_price']:,}₩</b>\n"
             result_message += f"<b>{index+5}.</b> Dealer phone number: <b>{data_dict['phoneNumber']}</b>\n\n"
-            result_message += f"Requested by: <b>{data_dict['username']}</b>\n\n"
+            result_message += f"Requested by: <b>{data_dict['username']}</b> on <b>{data_dict['date']}</b>\n\n"
 
         buttons = [
             InlineKeyboardButton(f"{index + 1}", callback_data=f"edit_request_{editable_keys[index]}_{data_dict['id']}")

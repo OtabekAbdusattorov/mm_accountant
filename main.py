@@ -686,10 +686,13 @@ def view_edit_requests_admin(call):
 def edit_request_callback(call):
     state_manager.user_state(call.message, "edit_request_admin")
 
-    edit_index = call.data.split("_")[-2]
+    edit_index = call.data.split("_")[3]
 
-    if edit_index == "price":
+    if edit_index == "last":
         edit_index = "last_price"
+    elif edit_index == "vin":
+        edit_index = "vin_price"
+
 
     req_id = call.data.split("_")[-1]
 
@@ -712,7 +715,7 @@ def edit_value_handler(message, column, req_id, call):
             return
 
     # Validate price if editing price-related fields
-    if column in ["last_price", "vat"]:
+    if column in ["last_price", "vat_price"]:
         if not message.text.isdigit():
             bot.send_message(message.chat.id, "❌ Invalid input! Please enter a valid number for the price.")
             return
