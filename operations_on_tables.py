@@ -3,12 +3,12 @@ import sqlite3
 db = 'account'
 
 
-def insert_admin(admin_id, request_id, status_req, payment_status, message_id, date, vat_percentage):
+def insert_admin(admin_id, request_id, status_req, payment_status, message_id, date):
     connection = sqlite3.connect(db)
     with connection:
         connection.execute(
-            "INSERT INTO admins (adminID, requestID, status_req, payment_status, messageID, date, vat_percentage) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (admin_id, request_id, status_req, payment_status, message_id, date, vat_percentage)
+            "INSERT INTO admins (adminID, requestID, status_req, payment_status, messageID, date) VALUES (?, ?, ?, ?, ?, ?)",
+            (admin_id, request_id, status_req, payment_status, message_id, date)
         )
     connection.close()
 
@@ -41,11 +41,11 @@ def update_admin(col_name, col_val, param, param_val):
 
 
 
-def insert_order(request_id, is_confirmed, is_paid, admin_id, date, price_for_user):
+def insert_order(request_id, is_confirmed, is_paid, admin_id, date):
     connection = sqlite3.connect(db)
     with connection:
-        connection.execute("INSERT INTO orders (request_id, is_confirmed, is_paid, adminID, date, price_for_user) VALUES (?, ?, ?, ?, ?, ?)",
-            (request_id, is_confirmed, is_paid, admin_id, date, price_for_user))
+        connection.execute("INSERT INTO orders (request_id, is_confirmed, is_paid, adminID, date) VALUES (?, ?, ?, ?, ?)",
+            (request_id, is_confirmed, is_paid, admin_id, date))
     connection.close()
 
 
@@ -194,7 +194,7 @@ def all_orders_info(req_id):
     cursor = connection.cursor()
     query = """
         SELECT r.id, r.model, r.plateNumber, r.vin, r.last_price, r.vat, r.phoneNumber, r.paidprice, 
-                r.documents, o.rate, o.kfee, o.overseasfee, r.date, r.username, r.percentage, r.vat_percentage
+                r.documents, o.rate, o.kfee, o.overseasfee, r.date, r.username, r.percentage, r.vat_percentage, r.vat_price
         FROM requests r
         JOIN orders o ON o.request_id = r.id
         WHERE o.order_id = ?

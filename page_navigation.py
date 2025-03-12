@@ -123,14 +123,13 @@ def format_data(columns, rows, context):
 def format_results(columns, rows, context, user_id):
     result_message = ""
     inline_keyboard = InlineKeyboardMarkup(row_width=3)
-    key_count = 0
     data_dict = {}
     editable_keys = []
 
     if context == "all_orders":
         for row in rows:
             model_name = plate_number = vin = dealer_number = paid = share = req_id = None
-            doc = vat = price = username = date = kfee = rate = overseasfee = vat_share = None
+            doc = vat_amount = vat = price = username = date = kfee = rate = overseasfee = vat_share = None
             for col_name, value in zip(columns, row):
                 if col_name.lower() == "model":
                     model_name = value
@@ -140,6 +139,8 @@ def format_results(columns, rows, context, user_id):
                     plate_number = value
                 elif col_name.lower() == "last_price":
                     price = value
+                elif col_name.lower() == "vat_price":
+                    vat_amount = value
                 elif col_name.lower() == "vat":
                     vat = value
                 elif col_name.lower() == "phonenumber":
@@ -175,6 +176,7 @@ def format_results(columns, rows, context, user_id):
             result_message += f"Plate number: \t<b>{plate_number}</b>\n"
             result_message += f"VIN: \t<b>{vin}</b>\n"
             result_message += f"Last price: \t<b>{price:,}₩</b>\n"
+            result_message += f"VAT Price: \t<b>{vat_amount:,}₩</b>\n"
             result_message += f"VAT: \t<b>{vat:,}₩</b>\n"
             result_message += f"Dealer phone number: \t<b>{dealer_number}</b>\n"
             result_message += f"Paid price:\t<b>{paid:,} in {type_paid}</b>\n"
@@ -205,8 +207,7 @@ def format_results(columns, rows, context, user_id):
             data_dict = dict(zip(columns, row))
 
             editable_keys = [key for key in data_dict.keys() if key.lower() not in
-                             ['id', 'issuerid', 'status', 'messageid', 'paidprice', 'documents', 'paid_type', 'percentage', 'vat_percentage', 'vat']]
-            key_count = len(editable_keys)
+                             ['id', 'issuerid', 'status', 'messageid', 'paidprice', 'documents', 'paid_type', 'percentage', 'vat_percentage', 'vat', 'username', 'date']]
 
             result_message += f"<b>{index}.</b> Model: <b>{data_dict['model']}</b>\n"
             result_message += f"<b>{index+1}.</b> VIN: <b>{data_dict['vin']}</b>\n"
@@ -217,8 +218,8 @@ def format_results(columns, rows, context, user_id):
             result_message += f"Requested by: <b>{data_dict['username']}</b> on <b>{data_dict['date']}</b>\n\n"
 
         buttons = [
-            InlineKeyboardButton(f"{index + 1}", callback_data=f"edit_request_{editable_keys[index]}_{data_dict['id']}")
-            for index in range(key_count)
+            InlineKeyboardButton(f"{index + 1}", callback_data=f"edit_request_{field_name}_{data_dict['id']}")
+            for index, field_name in enumerate(editable_keys)
         ]
 
         inline_keyboard.add(*buttons)

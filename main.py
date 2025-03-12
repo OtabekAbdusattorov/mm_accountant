@@ -535,27 +535,24 @@ def handle_confirmation_by_admin(call):
             if status in ["Confirmed", "Cancelled"]:
                 bot.answer_callback_query(call.id, "This request has been confirmed or cancelled.")
             else:
-                after_vat_perc_price = math.floor((last_price - vat_perc) + 0.5)
                 vat_share_admin = math.floor((vat - vat_perc) + 0.5)
 
                 oot.update_admin(col_name="status_req", col_val="Confirmed", param="requestID", param_val=req_id)
                 oot.update_admin(col_name="vat_percentage", col_val=vat_share_admin, param="requestID", param_val=req_id)
-                oot.insert_order(req_id, 1, "Pending", admin_id, time, after_vat_perc_price)
-                confirm_request(call, vin, req_id, issuer_id, after_vat_perc_price, perc)
+                oot.insert_order(req_id, 1, "Pending", admin_id, time)
+                confirm_request(call, vin, req_id, issuer_id, perc)
         else:
             msg_id = msg_ids.get(admin_id)
             if req_id:
-                after_vat_perc_price = math.floor((last_price - vat_perc) + 0.5)
-                vat_share_admin = math.floor((vat - after_vat_perc_price) + 0.5)
 
-                oot.insert_order(req_id, 1, "Pending", admin_id, time, after_vat_perc_price)
-                oot.insert_admin(call.message.chat.id, req_id, "Confirmed", "Pending", msg_id, time, vat_share_admin)
-                confirm_request(call, vin, req_id, issuer_id, after_vat_perc_price, perc)
+                oot.insert_order(req_id, 1, "Pending", admin_id, time)
+                oot.insert_admin(call.message.chat.id, req_id, "Confirmed", "Pending", msg_id, time)
+                confirm_request(call, vin, req_id, issuer_id, perc)
     else:
         bot.answer_callback_query(call.id, "Broo, share a cookie. Don't be mean!")
 
 
-def confirm_request(call, vin, req_id, issuer_id, vat_perc, perc):
+def confirm_request(call, vin, req_id, issuer_id, perc):
 
     # Send confirmation message
     confirmed_message = f"Request (VIN: {vin}) has been confirmed by {call.message.chat.first_name}, and it is ready for payment."
@@ -563,6 +560,9 @@ def confirm_request(call, vin, req_id, issuer_id, vat_perc, perc):
     recipients = admin_ids if issuer_id in admin_ids else admin_ids + [issuer_id]
     for recipient in recipients:
         bot.send_message(recipient, text=confirmed_message)
+
+    last_price, vat_perc = oot.get_request_by_column("id", req_id, "last_price", "vat_percentage")
+    vat_perc = math.floor((last_price - vat_perc) + 0.5)
 
     # Send payment button
     inline_keyboard = InlineKeyboardMarkup().add(
@@ -686,12 +686,14 @@ def view_edit_requests_admin(call):
 def edit_request_callback(call):
     state_manager.user_state(call.message, "edit_request_admin")
 
-    edit_index = call.data.split("_")[3]
+    edit_index = call.data.split("_")[2]
 
     if edit_index == "last":
         edit_index = "last_price"
     elif edit_index == "vin":
         edit_index = "vin_price"
+    elif edit_index == "vat":
+        edit_index = "vat_price"
 
 
     req_id = call.data.split("_")[-1]
@@ -725,9 +727,15 @@ def edit_value_handler(message, column, req_id, call):
     if result:
         oot.update_admin(col_name='status_req', col_val="Edited", param="requestID", param_val=req_id)
     else:
-        oot.insert_admin(admin_id, req_id, "Edited", "Pending", msg_id, time, 0)
+        oot.insert_admin(admin_id, req_id, "Edited", "Pending", msg_id, time)
 
     oot.update_request(col_name=f'{column}', col_val=message.text, param="id", param_val=req_id)
+
+    if column == "vat_price":
+        vat_price = int(message.text)
+        vat = vat_price / 11
+        oot.update_request(col_name="vat", col_val=vat, param="id", param_val=req_id)
+
     message_id = oot.get_admin_by_column("requestID", req_id, "messageID")
 
     username, model, vin, plate_number, last_price, vat, vat_price, phone_number = (
@@ -1135,12 +1143,13 @@ def handle_edit_order(call):
         {'number': 2, 'display': 'Plate number', 'column': 'platenumber', 'table': 'requests', 'key_column': 'vin', 'key_value': vin, 'type': 'str'},
         {'number': 3, 'display': 'VIN', 'column': 'vin', 'table': 'cars', 'key_column': 'requests', 'key_value': vin, 'type': 'str'},
         {'number': 4, 'display': 'Last price', 'column': 'last_price', 'table': 'requests', 'key_column': 'id', 'key_value': req_id, 'type': 'int'},
-        {'number': 5, 'display': 'VAT', 'column': 'vat', 'table': 'requests', 'key_column': 'request_id', 'key_value': req_id, 'type': 'int'},
-        {'number': 6, 'display': 'Paid price', 'column': 'paidprice', 'table': 'requests', 'key_column': 'request_id', 'key_value': req_id, 'type': 'int'},
-        {'number': 7, 'display': 'Exchange rate', 'column': 'rate', 'table': 'orders', 'key_column': 'request_id', 'key_value': req_id, 'type': 'float'},
-        {'number': 8, 'display': 'Fees in Korea', 'column': 'kfee', 'table': 'orders', 'key_column': 'request_id', 'key_value': req_id, 'type': 'int'},
-        {'number': 9, 'display': 'Overseas fee', 'column': 'overseasfee', 'table': 'orders', 'key_column': 'request_id', 'key_value': req_id, 'type': 'int'},
-        {'number': 10, 'display': 'Dealer phone number', 'column': 'phoneNumber', 'table': 'requests', 'key_column': 'id', 'key_value': req_id, 'type': 'int'}
+        {'number': 5, 'display': 'VAT Amount', 'column': 'vat_price', 'table': 'requests', 'key_column': 'request_id', 'key_value': req_id, 'type': 'int'},
+        {'number': 6, 'display': 'VAT Share', 'column': 'percentage', 'table': 'requests', 'key_column': 'request_id', 'key_value': req_id, 'type': 'int'},
+        {'number': 7, 'display': 'Paid price', 'column': 'paidprice', 'table': 'requests', 'key_column': 'request_id', 'key_value': req_id, 'type': 'int'},
+        {'number': 8, 'display': 'Exchange rate', 'column': 'rate', 'table': 'orders', 'key_column': 'request_id', 'key_value': req_id, 'type': 'float'},
+        {'number': 9, 'display': 'Fees in Korea', 'column': 'kfee', 'table': 'orders', 'key_column': 'request_id', 'key_value': req_id, 'type': 'int'},
+        {'number': 10, 'display': 'Overseas fee', 'column': 'overseasfee', 'table': 'orders', 'key_column': 'request_id', 'key_value': req_id, 'type': 'int'},
+        {'number': 11, 'display': 'Dealer phone number', 'column': 'phoneNumber', 'table': 'requests', 'key_column': 'id', 'key_value': req_id, 'type': 'int'}
     ]
 
     message_text = "Select the field to edit:\n"
@@ -1178,18 +1187,20 @@ def handle_edit_field_selection(call):
          'type': 'str'},
         {'number': 4, 'display': 'Last price', 'column': 'last_price', 'table': 'requests', 'key_column': 'id',
          'key_value': req_id, 'type': 'int'},
-        {'number': 5, 'display': 'VAT', 'column': 'vat', 'table': 'requests', 'key_column': 'id',
+        {'number': 5, 'display': 'VAT Amount', 'column': 'vat_price', 'table': 'requests', 'key_column': 'id',
          'key_value': req_id, 'type': 'int'},
-        {'number': 6, 'display': 'Paid price', 'column': 'paidprice', 'table': 'requests', 'key_column': 'id ',
+        {'number': 6, 'display': 'VAT Share', 'column': 'percentage', 'table': 'requests', 'key_column': 'id',
          'key_value': req_id, 'type': 'int'},
-        {'number': 7, 'display': 'Exchange rate', 'column': 'rate', 'table': 'orders', 'key_column': 'request_id',
+        {'number': 7, 'display': 'Paid price', 'column': 'paidprice', 'table': 'requests', 'key_column': 'request_id',
+         'key_value': req_id, 'type': 'int'},
+        {'number': 8, 'display': 'Exchange rate', 'column': 'rate', 'table': 'orders', 'key_column': 'request_id',
          'key_value': req_id, 'type': 'float'},
-        {'number': 8, 'display': 'Fees in Korea', 'column': 'kfee', 'table': 'orders', 'key_column': 'request_id',
+        {'number': 9, 'display': 'Fees in Korea', 'column': 'kfee', 'table': 'orders', 'key_column': 'request_id',
          'key_value': req_id, 'type': 'int'},
-        {'number': 9, 'display': 'Overseas fee', 'column': 'overseasfee', 'table': 'orders', 'key_column': 'request_id',
-         'key_value': req_id, 'type': 'int'},
-        {'number': 10, 'display': 'Dealer phone number', 'column': 'phoneNumber', 'table': 'requests',
-         'key_column': 'id', 'key_value': req_id, 'type': 'str'}
+        {'number': 10, 'display': 'Overseas fee', 'column': 'overseasfee', 'table': 'orders',
+         'key_column': 'request_id', 'key_value': req_id, 'type': 'int'},
+        {'number': 11, 'display': 'Dealer phone number', 'column': 'phoneNumber', 'table': 'requests',
+         'key_column': 'id', 'key_value': req_id, 'type': 'int'}
     ]
 
     selected_field = next((f for f in editable_fields if f['number'] == field_number), None)
@@ -1198,7 +1209,7 @@ def handle_edit_field_selection(call):
         return
 
     user_edit_context[call.message.chat.id] = selected_field
-    state_manager.user_state(call.message, f"awaiting_edit_{selected_field['column']}")
+    state_manager.user_state(call.message, f"awaiting_edit_{selected_field['column']}_{req_id}")
 
     sent_msg = bot.send_message(call.message.chat.id, f"Enter new value for {selected_field['display']}:")
     bot.answer_callback_query(call.id)
@@ -1233,6 +1244,18 @@ def handle_edit_value_input(message):
         return
 
     # Update database
+    if selected_field['column'] == 'vat_price':
+        perc = oot.get_request_by_column("id", selected_field['key_value'], "percentage")[0]
+        vat = new_value / 11
+        vat_perc = vat * (perc / 100)
+        oot.update_request(col_name="vat_percentage", col_val=vat_perc, param="id", param_val=selected_field['key_value'])
+        oot.update_request(col_name="vat", col_val=math.floor(vat+0.5), param="id", param_val=selected_field['key_value'])
+    elif selected_field['column'] == 'percentage':
+        vat = oot.get_request_by_column("id", selected_field['key_value'], "vat")[0]
+        vat_perc = (new_value / 100) * vat
+        oot.update_request(col_name="vat_percentage", col_val=vat_perc, param="id", param_val=selected_field['key_value'])
+
+
     success = oot.update_table(
         selected_field['table'],
         selected_field['column'],
@@ -1361,26 +1384,31 @@ def handle_balance(message):
         balance = 0
 
         cursor.execute(
-            "SELECT id, paidprice, paid_type FROM requests WHERE issuerID = ?",
+            "SELECT id, paidprice, paid_type, last_price, vat_percentage, vat_price FROM requests WHERE issuerID = ?",
             (user_id,)
         )
         result = cursor.fetchall()
 
         for row in result:
-            request_id, paid_price, paid_type = row
-            cursor.execute("SELECT price_for_user, kfee, rate, overseasfee FROM orders WHERE request_id = ?",
+            request_id, paid_price, paid_type, last_price, vat_perc, vat_price = row
+            cursor.execute("SELECT kfee, rate, overseasfee FROM orders WHERE request_id = ?",
                            (request_id,))
             orders = cursor.fetchall()
 
+            # admin_id = oot.get_admin_by_column("requestID", request_id, "adminID")[0]
+
             for order in orders:
-                price_for_user, k_fee, rate, overseas_fee = order
+                k_fee, rate, overseas_fee = order
+                price_for_user = math.floor((last_price - vat_perc) + 0.5)
                 paid_price = paid_price * rate if paid_type == 'usdt' else paid_price
                 balance += paid_price - (price_for_user + k_fee + (overseas_fee * rate))
+
+                # if user_id == admin_id:
+                #     balance += (vat_price - math.floor(vat_perc+0.5))
 
         return balance
 
     if user_id in admin_ids:
-        # Admin sees all users' balances
         cursor.execute("SELECT DISTINCT issuerID, username FROM requests")
         users = cursor.fetchall()
 
