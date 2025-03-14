@@ -527,8 +527,6 @@ def handle_confirmation_by_admin(call):
 
     admin_id = call.message.chat.id
 
-    last_price = oot.get_request_by_column("id", req_id, "last_price")[0]
-
     if perc is not None:
         if result_admin:
             status = result_admin[0]
@@ -1389,13 +1387,13 @@ def handle_balance(message):
     connection = sqlite3.connect(db)
     cursor = connection.cursor()
 
-    def calculate_balance(user_id):
+    def calculate_balance(userid):
         """Calculate the user's balance and return None if no records exist or an error occurs."""
         try:
             balance = 0
             cursor.execute(
                 "SELECT id, paidprice, paid_type, last_price, vat_percentage, vat_price FROM requests WHERE issuerID = ?",
-                (user_id,)
+                (userid,)
             )
             result = cursor.fetchall()
 
@@ -1413,14 +1411,14 @@ def handle_balance(message):
                     paid_price = paid_price * rate if paid_type == 'usdt' else paid_price
                     balance += paid_price - (price_for_user + k_fee + (overseas_fee * rate))
 
-                    if user_id in admin_ids:
-                        vat_share_admin = oot.get_admin_by_column("adminID", user_id, "vat_share")[0]
+                    if userid in admin_ids:
+                        vat_share_admin = oot.get_admin_by_column("adminID", userid, "vat_share")[0]
                         balance += vat_share_admin
 
-            return balance if balance != 0 else None  # Return None if balance is 0
-        except Exception as e:
-            print(f"Error calculating balance for user {user_id}: {e}")
-            return None  # Return None in case of an error
+            return balance if balance != 0 else None
+        except Exception as ex:
+            print(f"Error calculating balance for user {userid}: {ex}")
+            return None
 
     try:
         if user_id in admin_ids:
