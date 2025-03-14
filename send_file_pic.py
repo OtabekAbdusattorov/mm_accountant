@@ -1,9 +1,11 @@
-import matplotlib
+import matplotlib, warnings
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt, sqlite3
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 
 db = 'account'
+
+warnings.filterwarnings("ignore", category=UserWarning, message=".*Glyph 50864.*")
 
 
 def fetch_all_data_for_admin():
@@ -14,7 +16,7 @@ def fetch_all_data_for_admin():
     # Query to fetch all requests data
     cursor.execute("""
                    SELECT
-                        r.id as 'No.', r.model as Model, r.plateNumber as 'CAR PLATE NUMBER', r.vin as 'VIN NUMBER',
+                        r.id as 'No.', o.order_id as 'Search number', r.model as Model, r.plateNumber as 'CAR PLATE NUMBER', r.vin as 'VIN NUMBER',
                         r.last_price as 'Last Price in KRW', r.vat_price as 'VAT in KRW', r.paidprice as 'Paid Price', r.paid_type as 'PAID IN', r.date as Date,
                         o.kfee as 'FEES IN KOREA in KRW', o.overseasfee as 'LOGISTICS FEES in USD', o.overseasfee * rate as 'LOGISTICS FEES IN KRW',
                         o.rate as 'Exchange Rate',

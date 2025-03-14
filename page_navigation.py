@@ -180,12 +180,17 @@ def format_results(columns, rows, context, user_id):
             result_message += f"VAT: \t<b>{vat:,}₩</b>\n"
             result_message += f"Dealer phone number: \t<b>{dealer_number}</b>\n"
             result_message += f"Paid price:\t<b>{paid:,} in {type_paid}</b>\n"
+            if type_paid == "usdt":
+                paid = rate * paid
+                result_message += f"Paid price in KRW:\t<b>{paid:,}₩</b>\n"
             result_message += f"Documents: \t<b>{doc}</b>\n"
             result_message += f"Exchange rate: \t<b>{rate:,}</b>\n"
             result_message += f"Fees in Korea: \t<b>{kfee:,}₩</b>\n"
             result_message += f"Overseas fee: \t<b>{overseasfee:,}$</b>\n"
             result_message += f"VAT share % (user): \t<b>{share}%</b>\n"
-            result_message += f"VAT share amount (user): \t<b>{vat_share:,}₩</b>\n\n"
+            result_message += f"VAT share amount (user): \t<b>{vat_share:,}₩</b>\n"
+            total_for_customer = kfee + (overseasfee * rate) + (price - vat_share)
+            result_message += f"Total price for customer: \t<b>{total_for_customer:,}₩</b>\n\n"
             result_message += f"Request created on \t<b>{date}</b> by <b>{username}</b>"
 
             inline_keyboard = InlineKeyboardMarkup(row_width=2)

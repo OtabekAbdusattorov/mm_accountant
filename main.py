@@ -15,8 +15,8 @@ import telebot \
     , page_navigation as pg_nav \
     , re \
     , manage_documents as md
-from telebot.types import KeyboardButton, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
-
+from telebot.types import KeyboardButton, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup, \
+    ReplyKeyboardRemove
 
 # Environmental variables initialization
 load_dotenv()
@@ -87,7 +87,9 @@ def start(message):
 
     full_lists = KeyboardButton("Full list")
     send_requests = KeyboardButton("Send request")
+    search_order = KeyboardButton("Search order")
     keyboard.row(full_lists, send_requests)
+    keyboard.add(search_order)
     bot.send_message(message.chat.id,"Welcome! Please choose an option below:" ,reply_markup=keyboard)
 
 
@@ -989,6 +991,8 @@ def handle_done_command(message):
             md.unzip_and_send_files(user_id, zip_path)
 
         message_sent_flags.pop(user_id, None)
+        for admin_id in admin_ids:
+            bot.send_message(admin_id, f"Documents are uploaded for <b>{vin}</b>", parse_mode="HTML")
     else:
         bot.send_message(user_id, "No images found. Please upload at least one image.")
 
@@ -1018,7 +1022,7 @@ def process_exchange_rate(message, req_id, user_id, price, vin):
                     , parse_mode="HTML"
                 )
         else:
-            for admin in admin_ids+user_id:
+            for admin in admin_ids + [user_id]:
                 bot.send_message(
                     admin,
                     f"From <b>{message.chat.first_name}</b>\n\n✅ Exchange rate set to: {rate:,} 💰\n\nfor VIN: `{vin}`\n\nPrice: {price} / {rate}= {rate_price:,.2f}"
@@ -1062,6 +1066,55 @@ def order_complete(call):
 
         else:
             bot.answer_callback_query(call.id, f"Request for (VIN: {vin}) is already closed and confirmed!")
+
+
+@bot.message_handler(func=lambda message: message.text == "Search order")
+def search_order(message):
+    bot.delete_message(message.chat.id, message.message_id)
+    sent_msg = bot.send_message(
+        chat_id=message.chat.id,
+        text="Please provide the order ID (number) to search for."
+    )
+    user_last_message[message.chat.id] = sent_msg.message_id
+    bot.register_next_step_handler(message, handle_order_id)
+
+
+def handle_order_id(message):
+    order_id = message.text.strip()
+
+    delete_last_message(message.chat.id)
+
+    bot.delete_message(message.chat.id, message.message_id)
+
+    if not order_id.isdigit():
+        sent_msg = bot.send_message(
+            chat_id=message.chat.id,
+            text="Please enter a valid order ID (number)."
+        )
+        bot.register_next_step_handler(message, handle_order_id)
+        user_last_message[message.chat.id] = sent_msg.message_id
+        return
+
+    columns, request_data = oot.all_orders_info(order_id)
+
+    if not request_data:
+        sent_msg = bot.send_message(
+            chat_id=message.chat.id,
+            text="No order found with that ID. Please try again.",
+        )
+        user_last_message[message.chat.id] = sent_msg.message_id
+        return
+
+    full_request_info, inline_keyboard = pg_nav.format_results(columns, request_data, "all_orders", message.chat.id)
+
+    delete_last_message(message.chat.id)
+
+    bot.send_message(
+        chat_id=message.chat.id,
+        text=f"<b>Request Info:</b>\n\n{full_request_info}",
+        parse_mode="HTML",
+        reply_markup=inline_keyboard
+    )
 
 
 @bot.message_handler(commands=['all_orders'])
@@ -1411,10 +1464,6 @@ def handle_balance(message):
                     paid_price = paid_price * rate if paid_type == 'usdt' else paid_price
                     balance += paid_price - (price_for_user + k_fee + (overseas_fee * rate))
 
-                    if userid in admin_ids:
-                        vat_share_admin = oot.get_admin_by_column("adminID", userid, "vat_share")[0]
-                        balance += vat_share_admin
-
             return balance if balance != 0 else None
         except Exception as ex:
             print(f"Error calculating balance for user {userid}: {ex}")
@@ -1429,9 +1478,12 @@ def handle_balance(message):
             try:
                 admin_balance = calculate_balance(user_id)
                 if admin_balance is None:
-                    balances.append("You have no balance record.")
+                    balances.append("You have no balance record from requests.")
                 else:
                     balances.append(f"Your balance: {admin_balance:,}₩")
+                cursor.execute("SELECT SUM(vat_admin) FROM admin WHERE adminID = ?", (user_id,))
+                vat_share = cursor.fetchone()
+                balances.append(f"Your balance: {vat_share}")
             except Exception as e:
                 print(f"Error retrieving admin balance for user {user_id}: {e}")
                 balances.append("Unable to retrieve balance due to an error.")

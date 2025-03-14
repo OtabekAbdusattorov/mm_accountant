@@ -69,16 +69,13 @@ def unzip_and_send_files(user_id, zip_filename):
                     # **Check if file exists and is non-empty**
                     if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
                         bot.send_message(user_id, f"Skipping empty or missing file: {file}")
-                        continue  # Skip empty files
-
-                    with open(file_path, "rb") as f:
-                        bot.send_document(user_id, f)
+                        continue
 
                     sent_files.append(file_path)
 
             # Send confirmation message if files were sent
             if sent_files:
-                bot.send_message(user_id, "All images have been successfully extracted and sent.")
+                bot.send_message(user_id, "All images have been successfully zipped and stored.")
             else:
                 bot.send_message(user_id, "No valid images were found inside the ZIP file.")
 
