@@ -538,7 +538,7 @@ def handle_confirmation_by_admin(call):
                 vat_share_admin = math.floor((vat - vat_perc) + 0.5)
 
                 oot.update_admin(col_name="status_req", col_val="Confirmed", param="requestID", param_val=req_id)
-                oot.update_admin(col_name="vat_percentage", col_val=vat_share_admin, param="requestID", param_val=req_id)
+                oot.update_admin(col_name="vat_share", col_val=vat_share_admin, param="requestID", param_val=req_id)
                 oot.insert_order(req_id, 1, "Pending", admin_id, time)
                 confirm_request(call, vin, req_id, issuer_id, perc)
         else:
@@ -1191,7 +1191,7 @@ def handle_edit_field_selection(call):
          'key_value': req_id, 'type': 'int'},
         {'number': 6, 'display': 'VAT Share', 'column': 'percentage', 'table': 'requests', 'key_column': 'id',
          'key_value': req_id, 'type': 'int'},
-        {'number': 7, 'display': 'Paid price', 'column': 'paidprice', 'table': 'requests', 'key_column': 'request_id',
+        {'number': 7, 'display': 'Paid price', 'column': 'paidprice', 'table': 'requests', 'key_column': 'id',
          'key_value': req_id, 'type': 'int'},
         {'number': 8, 'display': 'Exchange rate', 'column': 'rate', 'table': 'orders', 'key_column': 'request_id',
          'key_value': req_id, 'type': 'float'},
@@ -1250,10 +1250,19 @@ def handle_edit_value_input(message):
         vat_perc = vat * (perc / 100)
         oot.update_request(col_name="vat_percentage", col_val=vat_perc, param="id", param_val=selected_field['key_value'])
         oot.update_request(col_name="vat", col_val=math.floor(vat+0.5), param="id", param_val=selected_field['key_value'])
+
+        vat_share_admin = math.floor((vat - vat_perc) + 0.5)
+
+        oot.update_admin(col_name="vat_share", col_val=vat_share_admin, param="requestID", param_val=selected_field['key_value'])
     elif selected_field['column'] == 'percentage':
         vat = oot.get_request_by_column("id", selected_field['key_value'], "vat")[0]
         vat_perc = (new_value / 100) * vat
         oot.update_request(col_name="vat_percentage", col_val=vat_perc, param="id", param_val=selected_field['key_value'])
+
+        vat_share_admin = math.floor((vat - vat_perc) + 0.5)
+
+        oot.update_admin(col_name="vat_share", col_val=vat_share_admin, param="requestID",
+                         param_val=selected_field['key_value'])
 
 
     success = oot.update_table(
@@ -1381,48 +1390,82 @@ def handle_balance(message):
     cursor = connection.cursor()
 
     def calculate_balance(user_id):
-        balance = 0
+        """Calculate the user's balance and return None if no records exist or an error occurs."""
+        try:
+            balance = 0
+            cursor.execute(
+                "SELECT id, paidprice, paid_type, last_price, vat_percentage, vat_price FROM requests WHERE issuerID = ?",
+                (user_id,)
+            )
+            result = cursor.fetchall()
 
-        cursor.execute(
-            "SELECT id, paidprice, paid_type, last_price, vat_percentage, vat_price FROM requests WHERE issuerID = ?",
-            (user_id,)
-        )
-        result = cursor.fetchall()
+            if not result:  # No records found for this user
+                return None
 
-        for row in result:
-            request_id, paid_price, paid_type, last_price, vat_perc, vat_price = row
-            cursor.execute("SELECT kfee, rate, overseasfee FROM orders WHERE request_id = ?",
-                           (request_id,))
-            orders = cursor.fetchall()
+            for row in result:
+                request_id, paid_price, paid_type, last_price, vat_perc, vat_price = row
+                cursor.execute("SELECT kfee, rate, overseasfee FROM orders WHERE request_id = ?", (request_id,))
+                orders = cursor.fetchall()
 
-            # admin_id = oot.get_admin_by_column("requestID", request_id, "adminID")[0]
+                for order in orders:
+                    k_fee, rate, overseas_fee = order
+                    price_for_user = math.floor((last_price - vat_perc) + 0.5)
+                    paid_price = paid_price * rate if paid_type == 'usdt' else paid_price
+                    balance += paid_price - (price_for_user + k_fee + (overseas_fee * rate))
 
-            for order in orders:
-                k_fee, rate, overseas_fee = order
-                price_for_user = math.floor((last_price - vat_perc) + 0.5)
-                paid_price = paid_price * rate if paid_type == 'usdt' else paid_price
-                balance += paid_price - (price_for_user + k_fee + (overseas_fee * rate))
+                    if user_id in admin_ids:
+                        vat_share_admin = oot.get_admin_by_column("adminID", user_id, "vat_share")[0]
+                        balance += vat_share_admin
 
-                # if user_id == admin_id:
-                #     balance += (vat_price - math.floor(vat_perc+0.5))
+            return balance if balance != 0 else None  # Return None if balance is 0
+        except Exception as e:
+            print(f"Error calculating balance for user {user_id}: {e}")
+            return None  # Return None in case of an error
 
-        return balance
+    try:
+        if user_id in admin_ids:
+            cursor.execute("SELECT DISTINCT issuerID, username FROM requests")
+            users = cursor.fetchall()
 
-    if user_id in admin_ids:
-        cursor.execute("SELECT DISTINCT issuerID, username FROM requests")
-        users = cursor.fetchall()
+            balances = []
+            try:
+                admin_balance = calculate_balance(user_id)
+                if admin_balance is None:
+                    balances.append("You have no balance record.")
+                else:
+                    balances.append(f"Your balance: {admin_balance:,}₩")
+            except Exception as e:
+                print(f"Error retrieving admin balance for user {user_id}: {e}")
+                balances.append("Unable to retrieve balance due to an error.")
 
-        balances = []
-        for (issuer_id, username) in users:
-            user_balance = calculate_balance(issuer_id)
-            balances.append(f"{username}: {user_balance:,}₩")
+            for (issuer_id, username) in users:
+                if issuer_id == user_id:
+                    continue
+                user_balance = calculate_balance(issuer_id)
+                if user_balance is None:
+                    balances.append(f"{username}: No balance record.")
+                else:
+                    balances.append(f"{username}: {user_balance:,}₩")
 
-        bot.send_message(user_id, "\n".join(balances))
-    else:
-        user_balance = calculate_balance(user_id)
-        bot.send_message(user_id, f'Your balance: {user_balance:,}₩')
+            bot.send_message(user_id, "\n".join(balances))
+        else:
+            try:
+                user_balance = calculate_balance(user_id)
+                if user_balance is None:
+                    bot.send_message(user_id, "You have no balance record.")
+                else:
+                    bot.send_message(user_id, f'Your balance: {user_balance:,}₩')
+            except Exception as e:
+                print(f"Error retrieving user balance for {user_id}: {e}")
+                bot.send_message(user_id, "An error occurred while retrieving your balance. Please try again later.")
 
-    connection.close()
+    except Exception as e:
+        print(f"Error handling balance command for user {user_id}: {e}")
+        bot.send_message(user_id, "An error occurred while processing your request. Please try again later.")
+
+    finally:
+        connection.close()
+
 
 
 if __name__ == '__main__':

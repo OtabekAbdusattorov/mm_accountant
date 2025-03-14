@@ -69,6 +69,7 @@ def create_table():
                 requestID INTEGER,
                 status_req TEXT,
                 payment_status TEXT DEFAULT 'pending',
+                vat_share INTEGER,
                 messageID INTEGER,
                 is_completed BOOLEAN DEFAULT 0,
                 date TEXT,
