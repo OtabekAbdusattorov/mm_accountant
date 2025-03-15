@@ -44,8 +44,7 @@ def create_zip_and_save(user_images, user_id, vin):
     user_images.pop(user_id, None)  # Clear stored images
 
     bot.send_message(user_id, "Your images have been successfully uploaded and packed into a ZIP file.")
-    return zip_filename  # Return the final zip path
-
+    return zip_filename
 
 def unzip_and_send_files(user_id, zip_filename):
     """Extracts the ZIP file and sends all images to the user."""
@@ -71,13 +70,10 @@ def unzip_and_send_files(user_id, zip_filename):
                         bot.send_message(user_id, f"Skipping empty or missing file: {file}")
                         continue
 
-                    sent_files.append(file_path)
+                    with open(file_path, "rb") as f:
+                        bot.send_document(user_id, f)
 
-            # Send confirmation message if files were sent
-            if sent_files:
-                bot.send_message(user_id, "All images have been successfully zipped and stored.")
-            else:
-                bot.send_message(user_id, "No valid images were found inside the ZIP file.")
+                    sent_files.append(file_path)
 
         except zipfile.BadZipFile:
             bot.send_message(user_id, "The ZIP file is corrupted and cannot be opened.")

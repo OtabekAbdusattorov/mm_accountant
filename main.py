@@ -529,14 +529,14 @@ def handle_confirmation_by_admin(call):
 
     admin_id = call.message.chat.id
 
+    vat_share_admin = math.floor((vat - vat_perc) + 0.5)
+
     if perc is not None:
         if result_admin:
             status = result_admin[0]
             if status in ["Confirmed", "Cancelled"]:
                 bot.answer_callback_query(call.id, "This request has been confirmed or cancelled.")
             else:
-                vat_share_admin = math.floor((vat - vat_perc) + 0.5)
-
                 oot.update_admin(col_name="status_req", col_val="Confirmed", param="requestID", param_val=req_id)
                 oot.update_admin(col_name="vat_share", col_val=vat_share_admin, param="requestID", param_val=req_id)
                 oot.insert_order(req_id, 1, "Pending", admin_id, time)
@@ -544,9 +544,9 @@ def handle_confirmation_by_admin(call):
         else:
             msg_id = msg_ids.get(admin_id)
             if req_id:
-
                 oot.insert_order(req_id, 1, "Pending", admin_id, time)
                 oot.insert_admin(call.message.chat.id, req_id, "Confirmed", "Pending", msg_id, time)
+                oot.update_admin(col_name="vat_share", col_val=vat_share_admin, param="requestID", param_val=req_id)
                 confirm_request(call, vin, req_id, issuer_id, perc)
     else:
         bot.answer_callback_query(call.id, "Broo, share a cookie. Don't be mean!")
@@ -562,7 +562,7 @@ def confirm_request(call, vin, req_id, issuer_id, perc):
         bot.send_message(recipient, text=confirmed_message)
 
     last_price, vat_perc = oot.get_request_by_column("id", req_id, "last_price", "vat_percentage")
-    vat_perc = math.floor((last_price - vat_perc) + 0.5)
+    after_vat = math.floor((last_price - vat_perc) + 0.5)
 
     # Send payment button
     inline_keyboard = InlineKeyboardMarkup().add(
@@ -570,7 +570,7 @@ def confirm_request(call, vin, req_id, issuer_id, perc):
     )
     bot.send_message(issuer_id,
                      text=f"This request (VIN: <b>{vin}</b>) has been confirmed, and ready for payment.\n"
-                          f"Price you should pay after VAT share is <b>{vat_perc:,}₩</b>.\n"
+                          f"Price you should pay after VAT share is <b>{after_vat:,}₩</b>.\n"
                           f"Your share is <b>{perc}%</b>.\n"
                           f"💳 Payment status:\n⏳ PENDING...",
                      reply_markup=inline_keyboard,
@@ -962,8 +962,7 @@ def handle_uploaded_images(message):
         send_msg = bot.send_message(user_id, "Creating your ZIP file now...")
         zip_path = md.create_zip_and_save(user_images, user_id, vin)
         if zip_path:
-            bot.send_document(user_id, open(zip_path, 'rb'))
-            os.remove(zip_path)  # Cleanup
+            os.remove(zip_path)
         message_sent_flags.pop(user_id, None)
         bot.delete_message(user_id, send_msg.message_id)
 
@@ -982,13 +981,9 @@ def handle_done_command(message):
     vin = state.split("_")[-1]
 
     if user_id in user_images and len(user_images[user_id]["images"]) > 0:
-        bot.send_message(user_id, "Zipping your images now...")
-        zip_path = md.create_zip_and_save(user_images, user_id, vin)
+        md.create_zip_and_save(user_images, user_id, vin)
 
         oot.update_request(col_name="documents", col_val=1, param_val=vin, param="vin")
-
-        if zip_path:
-            md.unzip_and_send_files(user_id, zip_path)
 
         message_sent_flags.pop(user_id, None)
         for admin_id in admin_ids:
@@ -1481,9 +1476,10 @@ def handle_balance(message):
                     balances.append("You have no balance record from requests.")
                 else:
                     balances.append(f"Your balance: {admin_balance:,}₩")
-                cursor.execute("SELECT SUM(vat_admin) FROM admin WHERE adminID = ?", (user_id,))
-                vat_share = cursor.fetchone()
-                balances.append(f"Your balance: {vat_share}")
+                cursor.execute("SELECT SUM(vat_share) FROM admins WHERE adminID = ?", (user_id,))
+                vat_share = cursor.fetchone()[0]
+                vat_share = 0 if vat_share is None else vat_share
+                balances.append(f"Your balance (from VATs): {vat_share:,}")
             except Exception as e:
                 print(f"Error retrieving admin balance for user {user_id}: {e}")
                 balances.append("Unable to retrieve balance due to an error.")
