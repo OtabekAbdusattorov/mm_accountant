@@ -802,7 +802,7 @@ def payment_method(call):
 
 
 def ask_for_price(message, vin, call):
-    if message.photo:
+    if message.photo and not message.caption:
         picture = message.photo[-1].file_id
 
         # Get file details and download the image
@@ -820,7 +820,7 @@ def ask_for_price(message, vin, call):
         bot.send_message(message.chat.id, "Now, please send the price.")
         bot.register_next_step_handler(message, send_price, picture, vin)
     else:
-        bot.answer_callback_query(call.id, "❌ Please send a valid picture... (again)")
+        bot.answer_callback_query(call.id, "❌ Please send a valid picture without a caption")
         bot.register_next_step_handler(message, ask_for_price, vin)
 
 
